@@ -161,19 +161,19 @@
 
                     {{-- Empty trash button --}}
                     <button type="button"
-                            wire:click="emptyTrash"
-                            wire:target="emptyTrash"
+                            wire:click="openEmptyTrashModal"
+                            wire:target="openEmptyTrashModal"
                             wire:loading.attr="disabled"
                             class="inline-flex items-center gap-1 px-3 py-1.5 rounded bg-red-600 text-white text-xs cursor-pointer hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed">
 
                         {{-- Normal --}}
-                        <span wire:loading.remove wire:target="emptyTrash">
+                        <span wire:loading.remove wire:target="openEmptyTrashModal">
                 <i class="fa-solid fa-trash-can"></i>
                 Empty trash
             </span>
 
                         {{-- Loading --}}
-                        <span wire:loading.flex wire:target="emptyTrash" class="items-center gap-1">
+                        <span wire:loading.flex wire:target="openEmptyTrashModal" class="items-center gap-1">
                 <i class="fa-solid fa-circle-notch animate-spin"></i>
                 <span>Cleaning...</span>
             </span>
@@ -210,7 +210,9 @@
                               d="M19 9l-7 7-7-7"/>
                     </svg>
                 </button>
-
+                @php
+                    $selected = $selectedId ? $files->firstWhere('id', $selectedId) : null;
+                @endphp
                 <div x-cloak x-show="open" @click.away="open = false"
                      class="absolute right-0 mt-1 w-44 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded shadow-lg z-30 text-xs py-1">
 
@@ -238,8 +240,6 @@
                         <i class="fa-regular fa-pen-to-square"></i> <span>ALT text</span>
                     </button>
 
-                    <hr class="my-1 border-gray-200 dark:border-slate-700">
-
                     <button type="button"
                             wire:click="copyLink"
                             class="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer">
@@ -261,7 +261,8 @@
                     <button type="button"
                             wire:click="addToFavorite"
                             class="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer">
-                        <i class="fa-solid fa-star text-yellow-400"></i> <span>Add to favorite</span>
+                        <i class="fa-solid fa-star text-yellow-400"></i>
+                        <span>{{ ($selected && $selected->is_favorite) ? 'Remove favorite' : 'Add favorite' }}</span>
                     </button>
 
                     <button type="button"
@@ -461,9 +462,6 @@
 
         {{-- RIGHT: preview panel --}}
         <div class="w-full lg:w-72 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded p-3 text-xs text-gray-700 dark:text-gray-200 hidden lg:block max-h-[70vh] overflow-y-auto">
-            @php
-                $selected = $selectedId ? $files->firstWhere('id', $selectedId) : null;
-            @endphp
 
             @if($selected)
                 {{-- Preview --}}
@@ -573,7 +571,9 @@
     @if($showUrlModal)
         <div class="fixed inset-0 z-40 flex items-center justify-center bg-black/40"
              wire:click.self="closeUrlModal">
+
             <div class="bg-white dark:bg-slate-900 rounded shadow-lg w-full max-w-md p-4 border border-gray-200 dark:border-slate-700">
+
                 <h3 class="text-sm font-semibold mb-3">Upload from URL</h3>
 
                 <div class="mb-3">
@@ -581,7 +581,8 @@
                     <input type="text"
                            wire:model.defer="urlInput"
                            class="w-full border border-gray-300 dark:border-slate-600 rounded px-2 py-1 text-xs bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-slate-500"
-                           placeholder="https://example.com/image.jpg">
+                           placeholder="https://example.com/image.jpg" autofocus>
+
                     @error('urlInput')
                     <div class="text-red-500 text-[11px] mt-1">{{ $message }}</div>
                     @enderror
@@ -593,11 +594,22 @@
                             class="px-3 py-1 text-xs border border-gray-200 dark:border-slate-700 rounded cursor-pointer bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700">
                         Cancel
                     </button>
+
+                    {{-- 🔥 Upload button with spinner --}}
                     <button type="button"
                             wire:click="uploadFromUrl"
+                            wire:target="uploadFromUrl"
                             wire:loading.attr="disabled"
-                            class="px-3 py-1 text-xs rounded bg-blue-600 text-white cursor-pointer">
-                        Upload
+                            class="px-3 py-1 text-xs rounded bg-blue-600 text-white cursor-pointer flex items-center gap-1">
+
+                        <span wire:loading.remove wire:target="uploadFromUrl">
+                            Upload
+                        </span>
+
+                            <span wire:loading.flex wire:target="uploadFromUrl" class="items-center gap-1">
+                            <i class="fa-solid fa-circle-notch animate-spin"></i>
+                            Uploading...
+                        </span>
                     </button>
                 </div>
             </div>
@@ -646,9 +658,17 @@
                     </button>
                     <button type="button"
                             wire:click="saveAltText"
+                            wire:target="saveAltText"
                             wire:loading.attr="disabled"
-                            class="px-3 py-1.5 text-xs rounded bg-blue-600 text-white">
-                        Save changes
+                            class="px-3 py-1 text-xs rounded bg-blue-600 text-white cursor-pointer flex items-center gap-1">
+                        <span wire:loading.remove wire:target="saveAltText">
+                            Save Change
+                        </span>
+
+                        <span wire:loading.flex wire:target="saveAltText" class="items-center gap-1">
+                            <i class="fa-solid fa-circle-notch animate-spin"></i>
+                            Saving...
+                        </span>
                     </button>
                 </div>
             </div>
@@ -683,11 +703,176 @@
                             class="px-3 py-1.5 text-xs border rounded">
                         Cancel
                     </button>
+
                     <button type="button"
                             wire:click="saveRename"
+                            wire:target="saveRename"
                             wire:loading.attr="disabled"
-                            class="px-3 py-1.5 text-xs rounded bg-blue-600 text-white">
-                        Save
+                            class="px-3 py-1 text-xs rounded bg-blue-600 text-white cursor-pointer flex items-center gap-1">
+                        <span wire:loading.remove wire:target="saveRename">
+                            Save
+                        </span>
+
+                        <span wire:loading.flex wire:target="saveRename" class="items-center gap-1">
+                            <i class="fa-solid fa-circle-notch animate-spin"></i>
+                            Saving...
+                        </span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- EMPTY TRASH CONFIRM MODAL --}}
+    @if($showEmptyTrashModal)
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+             wire:click.self="closeEmptyTrashModal">
+            <div class="bg-white dark:bg-slate-900 rounded shadow-lg w-full max-w-md border border-gray-200 dark:border-slate-700">
+
+                <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-slate-700">
+                    <h3 class="text-sm font-semibold">Empty trash</h3>
+                    <button type="button"
+                            wire:click="closeEmptyTrashModal"
+                            class="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-lg leading-none">
+                        &times;
+                    </button>
+                </div>
+
+                <div class="px-4 py-5 text-sm">
+                    <p>
+                        This action is irreversible. Are you sure you want to permanently delete all items in trash?
+                    </p>
+                </div>
+
+                <div class="px-4 py-3 border-t border-gray-200 dark:border-slate-700 flex justify-end gap-2">
+                    <button type="button"
+                            wire:click="closeEmptyTrashModal"
+                            class="px-3 py-1.5 text-xs border border-gray-200 dark:border-slate-700 rounded bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700">
+                        Close
+                    </button>
+
+                    <button type="button"
+                            wire:click="confirmEmptyTrash"
+                            wire:target="confirmEmptyTrash"
+                            wire:loading.attr="disabled"
+                            class="px-3 py-1.5 text-xs rounded bg-red-600 text-white cursor-pointer flex items-center gap-1 hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed">
+                    <span wire:loading.remove wire:target="confirmEmptyTrash">
+                        Confirm
+                    </span>
+                        <span wire:loading.flex wire:target="confirmEmptyTrash" class="items-center gap-1">
+                        <i class="fa-solid fa-circle-notch animate-spin"></i>
+                        <span>Deleting...</span>
+                    </span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- DELETE PERMANENTLY CONFIRM MODAL --}}
+    @if($showDeletePermanentModal)
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+             wire:click.self="closeDeletePermanentModal">
+            <div class="bg-white dark:bg-slate-900 rounded shadow-lg w-full max-w-md border border-gray-200 dark:border-slate-700">
+
+                <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-slate-700">
+                    <h3 class="text-sm font-semibold">Delete permanently</h3>
+                    <button type="button"
+                            wire:click="closeDeletePermanentModal"
+                            class="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-lg leading-none">
+                        &times;
+                    </button>
+                </div>
+
+                <div class="px-4 py-5 text-sm">
+                    <p>
+                        This action is irreversible. Are you sure you want to permanently delete this item?
+                    </p>
+                </div>
+
+                <div class="px-4 py-3 border-t border-gray-200 dark:border-slate-700 flex justify-end gap-2">
+                    <button type="button"
+                            wire:click="closeDeletePermanentModal"
+                            class="px-3 py-1.5 text-xs border border-gray-200 dark:border-slate-700 rounded bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700">
+                        Close
+                    </button>
+
+                    <button type="button"
+                            wire:click="confirmDeletePermanent"
+                            wire:target="confirmDeletePermanent"
+                            wire:loading.attr="disabled"
+                            class="px-3 py-1.5 text-xs rounded bg-red-600 text-white cursor-pointer flex items-center gap-1 hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed">
+                    <span wire:loading.remove wire:target="confirmDeletePermanent">
+                        Confirm
+                    </span>
+                        <span wire:loading.flex wire:target="confirmDeletePermanent" class="items-center gap-1">
+                        <i class="fa-solid fa-circle-notch animate-spin"></i>
+                        <span>Deleting...</span>
+                    </span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- MOVE TO TRASH CONFIRM MODAL --}}
+    @if($showMoveToTrashModal)
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+             wire:click.self="closeMoveToTrashModal">
+            <div class="bg-white dark:bg-slate-900 rounded shadow-lg w-full max-w-md border border-gray-200 dark:border-slate-700">
+
+                {{-- Header --}}
+                <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-slate-700">
+                    <h3 class="text-sm font-semibold">Move items to trash</h3>
+                    <button type="button"
+                            wire:click="closeMoveToTrashModal"
+                            class="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-lg leading-none">
+                        &times;
+                    </button>
+                </div>
+
+                {{-- Body --}}
+                <div class="px-4 py-5 space-y-4 text-sm">
+                    <p>Are you sure you want to move this item to trash?</p>
+
+                    <div class="flex items-start gap-2">
+                        <input type="checkbox"
+                               id="skipTrash"
+                               wire:model="skipTrash"
+                               class="mt-0.5 rounded border-gray-300 dark:border-slate-600">
+                        <div>
+                            <label for="skipTrash" class="text-sm font-medium cursor-pointer">
+                                Skip trash
+                            </label>
+                            <p class="text-[11px] text-gray-500 dark:text-gray-400">
+                                If it is checked, the file will be deleted permanently without moving to trash.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                {{-- Footer --}}
+                <div class="px-4 py-3 border-t border-gray-200 dark:border-slate-700 flex justify-end gap-2">
+                    <button type="button"
+                            wire:click="closeMoveToTrashModal"
+                            class="px-3 py-1.5 text-xs border border-gray-200 dark:border-slate-700 rounded bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700">
+                        Close
+                    </button>
+
+                    <button type="button"
+                            wire:click="confirmMoveToTrash"
+                            wire:target="confirmMoveToTrash"
+                            wire:loading.attr="disabled"
+                            class="px-3 py-1.5 text-xs rounded bg-red-600 text-white cursor-pointer flex items-center gap-1 hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed">
+
+                    <span wire:loading.remove wire:target="confirmMoveToTrash">
+                        Confirm
+                    </span>
+
+                        <span wire:loading.flex wire:target="confirmMoveToTrash" class="items-center gap-1">
+                        <i class="fa-solid fa-circle-notch animate-spin"></i>
+                        <span>Processing...</span>
+                    </span>
                     </button>
                 </div>
             </div>
@@ -696,6 +881,7 @@
 
 
     {{-- ========== RIGHT CLICK CONTEXT MENU ========== --}}
+
     @if($contextMenu['show'])
         <div class="fixed inset-0 z-40" wire:click="closeContextMenu"></div>
 
@@ -704,7 +890,6 @@
 
             {{-- যদি Trash scope এ থাকি তাহলে এই মেনু --}}
             @if($scope === 'trash')
-
                 <button type="button"
                         wire:click="selectMedia({{ $contextMenu['fileId'] }})"
                         class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
@@ -724,7 +909,7 @@
                 </button>
 
                 <button type="button"
-                        wire:click="deletePermanently"
+                        wire:click="openDeletePermanentModal({{ $contextMenu['fileId'] }})"
                         class="w-full px-3 py-1.5 text-left hover:bg-red-50 text-red-600 cursor-pointer">
                     <i class="fa-solid fa-trash-can"></i> <span>Delete permanently</span>
                 </button>
@@ -761,8 +946,6 @@
                     <i class="fa-regular fa-pen-to-square"></i> <span>Alt text</span>
                 </button>
 
-                <hr class="my-1">
-
                 <button type="button"
                         wire:click="copyLink"
                         class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
@@ -776,12 +959,17 @@
                 </button>
 
                 <button type="button"
+                        wire:click="addToFavorite"
+                        class="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer">
+                    <i class="fa-solid fa-star text-yellow-400"></i>
+                    <span>{{ ($selected && $selected->is_favorite) ? 'Remove favorite' : 'Add favorite' }}</span>
+                </button>
+
+                <button type="button"
                         wire:click="download"
                         class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
                     <i class="fa-solid fa-download"></i> <span>Download</span>
                 </button>
-
-                <hr class="my-1">
 
                 <button type="button"
                         wire:click="moveToTrash"
@@ -835,6 +1023,16 @@
             </div>
         </div>
     @endif
+
+    <div wire:loading.flex
+         wire:target="uploads"
+         class="absolute inset-0 z-50 bg-white/70 backdrop-blur flex items-center justify-center text-xs">
+
+        <div class="flex flex-col items-center gap-2">
+            <i class="fa-solid fa-circle-notch animate-spin text-lg"></i>
+            <span>Uploading...</span>
+        </div>
+    </div>
 </div>
 
 

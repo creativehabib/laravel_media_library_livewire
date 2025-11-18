@@ -20,7 +20,12 @@ class MediaManager extends Component
         'media-manager-insert' => 'onInsert',
         'media-insert' => 'handleMediaInsert',
     ];
+    public $showMoveToTrashModal = false;
+    public $skipTrash = false;   // checkbox state
 
+    public $showEmptyTrashModal = false;
+    public $showDeletePermanentModal = false;
+    public $pendingDeleteId = null;
     protected $paginationTheme = 'tailwind';
 
     public $perPage;
@@ -292,13 +297,13 @@ class MediaManager extends Component
 
         $this->selectedId = $copy->id;
         $this->resetPage();
-        $this->toast('File copied successfully.');
+        $this->toast('File duplicate successfully.');
         // ✅ context menu বন্ধ
         $this->closeContextMenu();
     }
 
     /**
-     * Move to trash (soft delete) অথবা Trash থেকে permanent delete
+     * Move to trash just open trash modal
      */
     public function moveToTrash()
     {
@@ -306,21 +311,39 @@ class MediaManager extends Component
             return;
         }
 
+        $this->skipTrash = false;
+        $this->showMoveToTrashModal = true;
+
+        $this->closeContextMenu(); // ✅
+    }
+
+    public function closeMoveToTrashModal()
+    {
+        $this->showMoveToTrashModal = false;
+    }
+
+    public function confirmMoveToTrash()
+    {
+        if (! $this->selectedId) {
+            return;
+        }
         $file = MediaFile::withTrashed()->find($this->selectedId);
         if (! $file) {
             return;
         }
 
-        // যদি আগেই ট্র্যাশে থাকে → permanent delete
-        if ($file->trashed()) {
+        if($this->skipTrash) {
             $this->deleteMedia($file->id);
+            $this->toast('File permanently deleted.');
         } else {
             $file->delete();
-            $this->selectedId = null;
+            $this->toast('File moved to trash successfully.');
         }
-
+        $this->selectedId = null;
         $this->resetPage();
-        $this->closeContextMenu(); // ✅
+        $this->resetPerPage();
+
+        $this->showMoveToTrashModal = false;
     }
 
     /**
@@ -337,11 +360,27 @@ class MediaManager extends Component
             return;
         }
 
+        // toggle
         $file->is_favorite = ! $file->is_favorite;
         $file->save();
 
-        $this->closeContextMenu(); // ✅
+        // 🔔 Toast message
+        $message = $file->is_favorite
+            ? 'Favorite-এ যোগ করা হয়েছে।'
+            : 'Favorite থেকে সরানো হয়েছে।';
+
+        $this->toast($message);
+//        $this->dispatch('media-toast', type: 'success', message: $message);
+
+        // যদি Favorites scope এ থাকি এবং আমরা favorite OFF করে ফেলি
+        if ($this->scope === 'favorites' && ! $file->is_favorite) {
+            $this->selectedId = null;
+            $this->resetPage();
+        }
+
+        $this->closeContextMenu();
     }
+
 
     /* ========= ALT TEXT MODAL ========= */
 
@@ -388,6 +427,8 @@ class MediaManager extends Component
         $file->alt = $this->altTextInput;
         $file->save();
 
+        $this->toast('File alt text saved successfully.');
+
         $this->showAltModal = false;
     }
 
@@ -406,6 +447,7 @@ class MediaManager extends Component
 
         $this->dispatch('media-copy-link', url: $file->url);
 
+        $this->toast('File link copy successfully.');
         $this->closeContextMenu(); // ✅
     }
 
@@ -602,6 +644,116 @@ class MediaManager extends Component
         }
     }
 
+    protected function runEmptyTrashLogic()
+    {
+        // শুধু Trash scope এ কাজ করবে
+        if ($this->scope !== 'trash') {
+            return;
+        }
+
+        // প্রয়োজন হলে current filters apply করতে পারো
+        $filters = [
+            'q'          => $this->q,
+            'mime'       => $this->mime,
+            'visibility' => $this->visibility,
+            'from'       => $this->from,
+            'to'         => $this->to,
+            'folder_id'  => $this->folder_id,
+            'tag'        => $this->tag,
+        ];
+
+        $query = MediaFile::withTrashed()
+            ->onlyTrashed()
+            ->filter($filters);
+
+        // সেফ ভাবে chunk করে delete করি
+        $query->chunkById(100, function ($items) {
+            foreach ($items as $item) {
+                $this->deleteMedia($item->id); // আগের মতই
+            }
+        });
+
+        $this->selectedId = null;
+        $this->resetPage();
+        $this->resetPerPage();
+        $this->toast('Trash has been cleared.');
+    }
+
+    // বাটন থেকে মডাল ওপেন
+    public function openEmptyTrashModal()
+    {
+        if ($this->scope !== 'trash') {
+            return;
+        }
+
+        $this->showEmptyTrashModal = true;
+    }
+
+    // মডাল বন্ধ
+    public function closeEmptyTrashModal()
+    {
+        $this->showEmptyTrashModal = false;
+    }
+
+    // Confirm বাটন
+    public function confirmEmptyTrash()
+    {
+        $this->runEmptyTrashLogic();
+
+        $this->showEmptyTrashModal = false;
+
+        $this->dispatch(
+            'media-toast',
+            type: 'success',
+            message: 'Trash emptied successfully.'
+        );
+    }
+
+    public function openDeletePermanentModal(?int $id = null)
+    {
+        // id আসলে context menu থেকে আসবে, না এলে selectedId ব্যবহার
+        $this->pendingDeleteId = $id ?: $this->selectedId;
+
+        if (! $this->pendingDeleteId) {
+            return;
+        }
+
+        $this->showDeletePermanentModal = true;
+
+        // context menu থাকলে বন্ধ করি
+        $this->closeContextMenu();
+    }
+
+    public function closeDeletePermanentModal()
+    {
+        $this->showDeletePermanentModal = false;
+        $this->pendingDeleteId = null;
+    }
+
+    public function confirmDeletePermanent()
+    {
+        if (! $this->pendingDeleteId) {
+            return;
+        }
+
+        $this->deleteMedia($this->pendingDeleteId);
+
+        if ($this->selectedId === $this->pendingDeleteId) {
+            $this->selectedId = null;
+        }
+
+        $this->pendingDeleteId = null;
+        $this->showDeletePermanentModal = false;
+
+        $this->resetPage();
+        $this->resetPerPage();
+
+        $this->dispatch(
+            'media-toast',
+            type: 'success',
+            message: 'File permanently deleted.'
+        );
+    }
     public function emptyTrash()
     {
         // শুধু Trash scope এ কাজ করবে
@@ -634,6 +786,8 @@ class MediaManager extends Component
         $this->selectedId = null;
         $this->resetPage();
         $this->resetPerPage();
+
+        $this->toast('Trash has been cleared.');
     }
 
     /* ========= Right-click context menu ========= */
@@ -673,6 +827,7 @@ class MediaManager extends Component
         if(! $this->selectedId) return;
         $this->deleteMedia($this->selectedId);
         $this->resetPage();
+        $this->toast('File successfully permanent deleted.');
         $this->closeContextMenu();
     }
 
