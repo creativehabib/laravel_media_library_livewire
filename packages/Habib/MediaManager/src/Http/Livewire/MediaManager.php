@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Storage;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 use Livewire\WithPagination;
+use Livewire\Attributes\On;
 
 class MediaManager extends Component
 {
@@ -21,7 +22,7 @@ class MediaManager extends Component
         'media-insert' => 'handleMediaInsert',
     ];
     public $showMoveToTrashModal = false;
-    public $skipTrash = false;   // checkbox state
+    public $skipTrash = false;   // checkbox stateা
 
     public $showEmptyTrashModal = false;
     public $showDeletePermanentModal = false;
@@ -467,6 +468,7 @@ class MediaManager extends Component
             : $file->url;
 
         $this->dispatch('media-copy-link', url: $indirect);
+        $this->toast('File indirect link copy successfully.');
 
         $this->closeContextMenu(); // ✅
     }
@@ -702,11 +704,7 @@ class MediaManager extends Component
 
         $this->showEmptyTrashModal = false;
 
-        $this->dispatch(
-            'media-toast',
-            type: 'success',
-            message: 'Trash emptied successfully.'
-        );
+        $this->toast('Trash emptied successfully.');
     }
 
     public function openDeletePermanentModal(?int $id = null)
@@ -748,46 +746,7 @@ class MediaManager extends Component
         $this->resetPage();
         $this->resetPerPage();
 
-        $this->dispatch(
-            'media-toast',
-            type: 'success',
-            message: 'File permanently deleted.'
-        );
-    }
-    public function emptyTrash()
-    {
-        // শুধু Trash scope এ কাজ করবে
-        if ($this->scope !== 'trash') {
-            return;
-        }
-
-        // প্রয়োজন হলে current filters apply করতে পারো
-        $filters = [
-            'q'          => $this->q,
-            'mime'       => $this->mime,
-            'visibility' => $this->visibility,
-            'from'       => $this->from,
-            'to'         => $this->to,
-            'folder_id'  => $this->folder_id,
-            'tag'        => $this->tag,
-        ];
-
-        $query = MediaFile::withTrashed()
-            ->onlyTrashed()
-            ->filter($filters);
-
-        // সেফ ভাবে chunk করে delete করি
-        $query->chunkById(100, function ($items) {
-            foreach ($items as $item) {
-                $this->deleteMedia($item->id); // তোমার আগের deleteMedia() মেথডই ব্যবহার করছি
-            }
-        });
-
-        $this->selectedId = null;
-        $this->resetPage();
-        $this->resetPerPage();
-
-        $this->toast('Trash has been cleared.');
+        $this->toast('File permanently deleted.');
     }
 
     /* ========= Right-click context menu ========= */
@@ -819,15 +778,6 @@ class MediaManager extends Component
         $file->restore();
         $this->selectedId = null;
         $this->resetPage();
-        $this->closeContextMenu();
-    }
-
-    public function deletePermanently()
-    {
-        if(! $this->selectedId) return;
-        $this->deleteMedia($this->selectedId);
-        $this->resetPage();
-        $this->toast('File successfully permanent deleted.');
         $this->closeContextMenu();
     }
 
@@ -868,6 +818,7 @@ class MediaManager extends Component
         $file->save();
 
         $this->showRenameModal = false;
+        $this->toast('File successfully renamed.');
     }
 
     public function resetPerPage()

@@ -324,134 +324,166 @@
     {{-- MAIN CONTENT --}}
     <div class="flex flex-col gap-3 lg:flex-row">
         <div class="flex-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded p-3 max-h-[70vh] overflow-y-auto relative">
-            @if($folders->count())
-                <div class="mb-3">
-                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-                        @foreach($folders as $f)
-                            <button type="button"
-                                    wire:click="setFolder({{ $f->id }})"
-                                    class="border border-gray-200 dark:border-slate-700 rounded bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 px-2 py-3 flex flex-col items-center justify-center text-[11px]
-                                           {{ $folder_id == $f->id ? 'ring-2 ring-blue-400' : '' }}">
-                                <span class="text-xl mb-1">📁</span>
-                                <span class="truncate w-full text-center">{{ $f->name }}</span>
-                            </button>
-                        @endforeach
-                    </div>
+
+            {{-- 🔥 EMPTY STATES FOR ALL SCOPES --}}
+            @if($files->total() === 0 && $folders->count() === 0)
+                <div class="h-[55vh] flex flex-col items-center justify-center text-center text-gray-500 dark:text-gray-300">
+
+                    {{-- Illustration (নিজের মত path বদলে নাও) --}}
+                    @if($scope === 'trash')
+                        <img src="{{ asset('images/empty-trash.svg') }}" alt="Trash is empty" class="w-56 mb-4 opacity-90">
+                        <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-200">Trash is empty</h3>
+                        <p class="text-sm mt-1">There are no files or folders in your trash currently.</p>
+
+                    @elseif($scope === 'favorites')
+                        <img src="{{ asset('images/empty-favorites.svg') }}" alt="No favorites" class="w-56 mb-4 opacity-90">
+                        <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-200">No favorites yet</h3>
+                        <p class="text-sm mt-1">
+                            Mark media as favorite to quickly access them here.
+                        </p>
+
+                    @elseif($scope === 'recent')
+                        <img src="{{ asset('images/empty-recent.svg') }}" alt="No recent files" class="w-56 mb-4 opacity-90">
+                        <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-200">No recent files</h3>
+                        <p class="text-sm mt-1">
+                            You haven’t opened or uploaded any files recently.
+                        </p>
+
+                    @else {{-- all --}}
+                    <img src="{{ asset('images/empty-all.svg') }}" alt="No media" class="w-56 mb-4 opacity-90">
+                    <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-200">No media yet</h3>
+                    <p class="text-sm mt-1">
+                        Upload files or create folders to get started.
+                    </p>
+                    @endif
                 </div>
-            @endif
 
-            {{-- Files (GRID view) --}}
-            @if($viewMode === 'grid')
-                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-2">
-                    @forelse($files as $file)
-                        <button type="button"
-                                wire:click="selectMedia({{ $file->id }})"
-                                x-on:contextmenu.prevent="$wire.call('openContextMenu', {{ $file->id }}, $event.clientX, $event.clientY)"
-                                class="relative flex flex-col items-center text-[11px] cursor-pointer rounded p-2 bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 border-2
-                                @if($selectedId === $file->id)
-                                    border-blue-500 ring-2 ring-blue-500/60 bg-blue-50 dark:bg-blue-900/30
-                                @else
-                                    border-transparent
-                                @endif
-                            ">
-                            {{-- thumbnail --}}
-                            @if(Str::startsWith($file->mime_type, 'image/'))
-                                <img src="{{ $file->url }}"
-                                     class="w-full h-20 object-cover mb-1 rounded"
-                                     alt="{{ $file->alt }}">
-                            @else
-                                <div class="w-full h-20 flex items-center justify-center bg-gray-200 dark:bg-slate-700 rounded mb-1">
-                                    📄
-                                </div>
-                            @endif
-
-                            {{-- name + info --}}
-                            <div class="w-full truncate text-center">
-                                {{ $file->name }}
-                            </div>
-                            <div class="text-[10px] text-gray-500 dark:text-gray-400">
-                                {{ $file->mime_type }} • {{ number_format($file->size/1024, 1) }} KB
-                            </div>
-
-                            {{-- selected badge --}}
-                            @if($selectedId === $file->id)
-                                <span class="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] shadow">
-                                    <i class="fa fa-check"></i>
-                                </span>
-                            @endif
-                        </button>
-                    @empty
-                        <div class="col-span-2 sm:col-span-3 md:col-span-4 lg:col-span-6 xl:col-span-8 text-center text-xs text-gray-400 dark:text-gray-500 py-8">
-                            No media found in this folder.
-                        </div>
-                    @endforelse
-                </div>
             @else
-                {{-- LIST view --}}
-                <table class="w-full text-[11px]">
-                    <tbody>
-                    @forelse($files as $file)
-                        <tr class="border-b border-gray-200 dark:border-slate-700 last:border-0 hover:bg-gray-50 dark:hover:bg-slate-800
-                           @if($selectedId === $file->id) bg-blue-50 dark:bg-blue-900/30 @endif"
-                            x-on:contextmenu.prevent="$wire.call('openContextMenu', {{ $file->id }}, $event.clientX, $event.clientY)">
-                            <td class="py-1">
-                                <div class="flex items-center gap-2">
-                                    @if(Str::startsWith($file->mime_type, 'image/'))
-                                        <img src="{{ $file->url }}" class="w-8 h-8 object-cover rounded" alt="">
-                                    @else
-                                        <span class="w-8 h-8 flex items-center justify-center bg-gray-200 dark:bg-slate-700 rounded text-xs">📄</span>
-                                    @endif
-                                    <button type="button"
-                                            wire:click="selectMedia({{ $file->id }})"
-                                            class="truncate text-left">
-                                        {{ $file->name }}
-                                    </button>
+                {{-- 🔽 NORMAL LIST (FOLDERS + FILES) --}}
+
+                @if($folders->count())
+                    <div class="mb-3">
+                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                            @foreach($folders as $f)
+                                <button type="button"
+                                        wire:click="setFolder({{ $f->id }})"
+                                        class="border border-gray-200 dark:border-slate-700 rounded bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 px-2 py-3 flex flex-col items-center justify-center text-[11px]
+                                               {{ $folder_id == $f->id ? 'ring-2 ring-blue-400' : '' }}">
+                                    <span class="text-xl mb-1">📁</span>
+                                    <span class="truncate w-full text-center">{{ $f->name }}</span>
+                                </button>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
+
+                {{-- Files (GRID view) --}}
+                @if($viewMode === 'grid')
+                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-2">
+                        @forelse($files as $file)
+                            <button type="button"
+                                    wire:click="selectMedia({{ $file->id }})"
+                                    x-on:contextmenu.prevent="$wire.call('openContextMenu', {{ $file->id }}, $event.clientX, $event.clientY)"
+                                    class="relative flex flex-col items-center text-[11px] cursor-pointer rounded p-2 bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 border-2
+                                        @if($selectedId === $file->id)
+                                            border-blue-500 ring-2 ring-blue-500/60 bg-blue-50 dark:bg-blue-900/30
+                                        @else
+                                            border-transparent
+                                        @endif">
+
+                                @if(Str::startsWith($file->mime_type, 'image/'))
+                                    <img src="{{ $file->url }}"
+                                         class="w-full h-20 object-cover mb-1 rounded"
+                                         alt="{{ $file->alt }}">
+                                @else
+                                    <div class="w-full h-20 flex items-center justify-center bg-gray-200 dark:bg-slate-700 rounded mb-1">
+                                        📄
+                                    </div>
+                                @endif
+
+                                <div class="w-full truncate text-center">
+                                    {{ $file->name }}
                                 </div>
-                            </td>
-                            <td class="py-1 text-gray-500 dark:text-gray-400">
-                                {{ $file->mime_type }}
-                            </td>
-                            <td class="py-1 text-gray-500 dark:text-gray-400">
-                                {{ number_format($file->size/1024, 1) }} KB
-                            </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td class="py-4 text-center text-xs text-gray-400 dark:text-gray-500">
+                                <div class="text-[10px] text-gray-500 dark:text-gray-400">
+                                    {{ $file->mime_type }} • {{ number_format($file->size/1024, 1) }} KB
+                                </div>
+
+                                @if($selectedId === $file->id)
+                                    <span class="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] shadow">
+                                        <i class="fa fa-check"></i>
+                                    </span>
+                                @endif
+                            </button>
+                        @empty
+                            <div class="col-span-2 sm:col-span-3 md:col-span-4 lg:col-span-6 xl:col-span-8 text-center text-xs text-gray-400 dark:text-gray-500 py-8">
                                 No media found in this folder.
-                            </td>
-                        </tr>
-                    @endforelse
-                    </tbody>
-                </table>
-            @endif
+                            </div>
+                        @endforelse
+                    </div>
+                @else
+                    {{-- LIST view --}}
+                    <table class="w-full text-[11px]">
+                        <tbody>
+                        @forelse($files as $file)
+                            <tr class="border-b border-gray-200 dark:border-slate-700 last:border-0 hover:bg-gray-50 dark:hover:bg-slate-800
+                               @if($selectedId === $file->id) bg-blue-50 dark:bg-blue-900/30 @endif"
+                                x-on:contextmenu.prevent="$wire.call('openContextMenu', {{ $file->id }}, $event.clientX, $event.clientY)">
+                                <td class="py-1">
+                                    <div class="flex items-center gap-2">
+                                        @if(Str::startsWith($file->mime_type, 'image/'))
+                                            <img src="{{ $file->url }}" class="w-8 h-8 object-cover rounded" alt="">
+                                        @else
+                                            <span class="w-8 h-8 flex items-center justify-center bg-gray-200 dark:bg-slate-700 rounded text-xs">📄</span>
+                                        @endif
+                                        <button type="button"
+                                                wire:click="selectMedia({{ $file->id }})"
+                                                class="truncate text-left">
+                                            {{ $file->name }}
+                                        </button>
+                                    </div>
+                                </td>
+                                <td class="py-1 text-gray-500 dark:text-gray-400">
+                                    {{ $file->mime_type }}
+                                </td>
+                                <td class="py-1 text-gray-500 dark:text-gray-400">
+                                    {{ number_format($file->size/1024, 1) }} KB
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td class="py-4 text-center text-xs text-gray-400 dark:text-gray-500">
+                                    No media found in this folder.
+                                </td>
+                            </tr>
+                        @endforelse
+                        </tbody>
+                    </table>
+                @endif
 
-            {{-- LOAD MORE BUTTON --}}
-            @if($files->hasMorePages())
-                <div class="mt-3 text-center">
-                    <button type="button"
-                            wire:click="loadMore"
-                            wire:target="loadMore"
-                            wire:loading.attr="disabled"
-                            class="inline-flex items-center gap-2 px-4 py-1.5 text-xs rounded border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 cursor-pointer">
+                {{-- LOAD MORE BUTTON --}}
+                @if($files->hasMorePages())
+                    <div class="mt-3 text-center">
+                        <button type="button"
+                                wire:click="loadMore"
+                                wire:target="loadMore"
+                                wire:loading.attr="disabled"
+                                class="inline-flex items-center gap-2 px-4 py-1.5 text-xs rounded border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 cursor-pointer">
 
-                        {{-- Normal text --}}
-                        <span wire:loading.remove wire:target="loadMore">Load more</span>
+                            <span wire:loading.remove wire:target="loadMore">Load more</span>
 
-                        {{-- Loading অবস্থায় --}}
-                        <span wire:loading.flex wire:target="loadMore" class="items-center gap-2">
-                            <i class="fa-solid fa-circle-notch animate-spin"></i>
-                            <span>Loading...</span>
-                        </span>
-                    </button>
-                </div>
-            @endif
+                            <span wire:loading.flex wire:target="loadMore" class="items-center gap-2">
+                                <i class="fa-solid fa-circle-notch animate-spin"></i>
+                                <span>Loading...</span>
+                            </span>
+                        </button>
+                    </div>
+                @endif
+            @endif {{-- end empty-states / list switch --}}
 
             {{-- LEFT SIDE LOADING OVERLAY --}}
             <div wire:loading.flex
                  wire:target="refreshList"
                  class="absolute inset-0 bg-white/60 dark:bg-slate-900/60 z-40 items-center justify-center text-xs backdrop-blur">
-
                 <div class="flex flex-col items-center gap-2">
                     <i class="fa-solid fa-circle-notch animate-spin text-lg"></i>
                     <span>Refreshing...</span>
@@ -474,7 +506,6 @@
                 </div>
 
                 <div class="space-y-3">
-                    {{-- Name --}}
                     <div>
                         <div class="font-semibold">Name</div>
                         <div class="bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded px-2 py-1 text-[11px] truncate">
@@ -482,7 +513,6 @@
                         </div>
                     </div>
 
-                    {{-- Full URL + Copy button --}}
                     <div>
                         <div class="flex items-center justify-between mb-1">
                             <span class="font-semibold">Full URL</span>
@@ -503,7 +533,6 @@
                         </div>
                     </div>
 
-                    {{-- Size --}}
                     <div>
                         <div class="font-semibold">Size</div>
                         <div class="bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded px-2 py-1 text-[11px]">
@@ -511,7 +540,6 @@
                         </div>
                     </div>
 
-                    {{-- Uploaded at --}}
                     <div>
                         <div class="font-semibold">Uploaded at</div>
                         <div class="bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded px-2 py-1 text-[11px]">
@@ -519,7 +547,6 @@
                         </div>
                     </div>
 
-                    {{-- Modified at --}}
                     <div>
                         <div class="font-semibold">Modified at</div>
                         <div class="bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded px-2 py-1 text-[11px]">
@@ -527,7 +554,6 @@
                         </div>
                     </div>
 
-                    {{-- Alt text --}}
                     <div>
                         <div class="font-semibold">Alt text</div>
                         <div class="bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded px-2 py-1 text-[11px] truncate">
@@ -535,7 +561,6 @@
                         </div>
                     </div>
 
-                    {{-- Width / Height --}}
                     @if(!empty($selected->width) || !empty($selected->height))
                         <div>
                             <div class="font-semibold">Dimensions</div>
@@ -548,7 +573,6 @@
                         </div>
                     @endif
 
-                    {{-- MIME type --}}
                     <div>
                         <div class="font-semibold">MIME type</div>
                         <div class="bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded px-2 py-1 text-[11px] truncate">
