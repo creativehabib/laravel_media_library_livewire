@@ -1,0 +1,886 @@
+@php
+    use Illuminate\Support\Str;
+@endphp
+
+<div class="h-full flex flex-col gap-3 text-sm relative text-gray-900 dark:text-gray-100" x-data>
+    {{-- ========== TOP TOOLBAR ========== --}}
+    <div class="flex flex-col gap-2 bg-white dark:bg-slate-900 rounded border border-gray-200 dark:border-slate-700 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+        {{--Left controls--}}
+        <div class="flex flex-wrap items-center gap-2">
+            {{-- Upload dropdown: LOCAL + URL --}}
+            <div x-data="{ open: false }" class="relative">
+                <button type="button"
+                        @click="open = !open"
+                        class="inline-flex items-center gap-1 bg-blue-600 text-white px-3 py-1.5 rounded cursor-pointer">
+                    <i class="fa-solid fa-upload"></i> <span>Upload</span>
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </button>
+
+                <div x-cloak x-show="open" @click.away="open = false"
+                     class="absolute mt-1 w-44 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded shadow z-20 text-xs py-1">
+                    <button type="button"
+                            @click="$refs.localUpload.click(); open=false"
+                            class="w-full flex items-center gap-2 cursor-pointer px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-slate-800">
+                        <i class="fa-solid fa-upload"></i> <span>Upload from local</span>
+                    </button>
+
+                    <button type="button"
+                            @click="$wire.openUrlModal(); open=false"
+                            class="w-full flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800">
+                        <i class="fa fa-link"></i> <span>Upload from URL</span>
+                    </button>
+                </div>
+
+                <input type="file"
+                       multiple
+                       x-ref="localUpload"
+                       wire:model="uploads"
+                       class="hidden">
+            </div>
+
+            <button type="button"
+                    wire:click="openFolderModal"
+                    class="inline-flex items-center gap-1 border border-gray-200 dark:border-slate-700 px-3 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-slate-800 cursor-pointer">
+                <i class="fa-solid fa-folder-plus"></i>
+            </button>
+
+            {{-- Refresh --}}
+            <button type="button"
+                    wire:click="refreshList"
+                    wire:loading.attr="disabled"
+                    wire:target="refreshList"
+                    class="inline-flex items-center gap-1 border border-gray-200 dark:border-slate-700 px-2 py-1 rounded hover:bg-gray-50 dark:hover:bg-slate-800 cursor-pointer">
+
+                {{-- normal icon (লোডিং না থাকলে) --}}
+                <span wire:loading.remove wire:target="refreshList">
+                    <i class="fa-solid fa-sync"></i>
+                </span>
+
+                {{-- loading অবস্থায় spinner icon --}}
+                <span wire:loading wire:target="refreshList" class="flex items-center gap-1">
+                    <i class="fa-solid fa-circle-notch animate-spin"></i>
+                </span>
+            </button>
+
+            {{-- Filter dropdown --}}
+            <div x-data="{ open: false }" class="relative">
+                <button type="button"
+                        @click="open = !open"
+                        class="inline-flex items-center gap-1 border border-gray-200 dark:border-slate-700 px-2 py-1 rounded hover:bg-gray-50 dark:hover:bg-slate-800 cursor-pointer">
+                    <i class="fa-solid fa-filter"></i>Everything
+                </button>
+
+                <div x-cloak x-show="open" @click.away="open = false"
+                     class="absolute mt-1 w-56 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded shadow z-10 p-3 space-y-2 text-xs">
+                    <div>
+                        <label class="font-semibold block mb-1">Type</label>
+                        <select wire:model.live="mime"
+                                class="w-full border border-gray-300 dark:border-slate-600 rounded px-2 py-1 bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100">
+                            <option value="">Everything</option>
+                            <option value="image/">Images</option>
+                            <option value="video/">Videos</option>
+                            <option value="audio/">Audio</option>
+                            <option value="application/">Docs</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="font-semibold block mb-1">Visibility</label>
+                        <select wire:model.live="visibility"
+                                class="w-full border border-gray-300 dark:border-slate-600 rounded px-2 py-1 bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100">
+                            <option value="">All media</option>
+                            <option value="public">Public</option>
+                            <option value="private">Private</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="font-semibold block mb-1">Tag</label>
+                        <select wire:model.live="tag"
+                                class="w-full border border-gray-300 dark:border-slate-600 rounded px-2 py-1 bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100">
+                            <option value="">Any tag</option>
+                            @foreach($tags as $t)
+                                <option value="{{ $t->name }}">{{ $t->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            {{-- All media / Trash / Recent / Favorites dropdown --}}
+            <div x-data="{ openAll: false }" class="relative">
+                <button type="button"
+                        @click="openAll = !openAll"
+                        class="inline-flex items-center gap-1 bg-blue-600 text-white px-3 py-1.5 rounded cursor-pointer">
+                    <i class="fa-solid fa-globe"></i>
+                    <span>
+                        @if($scope === 'trash')
+                            Trash
+                        @elseif($scope === 'recent')
+                            Recent
+                        @elseif($scope === 'favorites')
+                            Favorites
+                        @else
+                            All media
+                        @endif
+                    </span>
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </button>
+
+                <div x-cloak x-show="openAll" @click.away="openAll = false"
+                     class="absolute mt-1 w-44 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded shadow z-20 text-xs py-1">
+                    <button type="button"
+                            wire:click="setScope('all')"
+                            class="w-full flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 {{ $scope === 'all' ? 'font-semibold' : '' }}">
+                        <i class="fa-solid fa-globe"></i><span>All media</span>
+                    </button>
+                    <button type="button"
+                            wire:click="setScope('trash')"
+                            class="w-full flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 {{ $scope === 'trash' ? 'font-semibold' : '' }}">
+                        <i class="fa-solid fa-trash"></i> <span>Trash</span>
+                    </button>
+                    <button type="button"
+                            wire:click="setScope('recent')"
+                            class="w-full flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 {{ $scope === 'recent' ? 'font-semibold' : '' }}">
+                        <i class="fa-solid fa-clock-rotate-left"></i><span>Recent</span>
+                    </button>
+                    <button type="button"
+                            wire:click="setScope('favorites')"
+                            class="w-full flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-800 {{ $scope === 'favorites' ? 'font-semibold' : '' }}">
+                        <i class="fa-solid fa-star text-yellow-400"></i> <span>Favorites</span>
+                    </button>
+                </div>
+            </div>
+
+            @if($scope === 'trash' && $files->total() > 0)
+                <div class="flex items-center gap-2">
+
+                    {{-- Empty trash button --}}
+                    <button type="button"
+                            wire:click="emptyTrash"
+                            wire:target="emptyTrash"
+                            wire:loading.attr="disabled"
+                            class="inline-flex items-center gap-1 px-3 py-1.5 rounded bg-red-600 text-white text-xs cursor-pointer hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed">
+
+                        {{-- Normal --}}
+                        <span wire:loading.remove wire:target="emptyTrash">
+                <i class="fa-solid fa-trash-can"></i>
+                Empty trash
+            </span>
+
+                        {{-- Loading --}}
+                        <span wire:loading.flex wire:target="emptyTrash" class="items-center gap-1">
+                <i class="fa-solid fa-circle-notch animate-spin"></i>
+                <span>Cleaning...</span>
+            </span>
+                    </button>
+
+                </div>
+            @endif
+
+        </div>
+
+        {{-- Right: Sort + Actions + View mode --}}
+        <div class="flex items-center gap-2 justify-end">
+            <div class="flex items-center gap-1">
+                <span class="text-xs text-gray-500 dark:text-gray-400">Sort</span>
+                <select wire:model.live="sort"
+                        class="border border-gray-300 dark:border-slate-600 rounded px-2 py-1 text-xs cursor-pointer bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100">
+                    <option value="name-asc">A–Z</option>
+                    <option value="name-desc">Z–A</option>
+                    <option value="newest">Newest</option>
+                    <option value="oldest">Oldest</option>
+                </select>
+            </div>
+
+            {{-- Actions dropdown --}}
+            <div x-data="{ open: false }" class="relative">
+                <button type="button"
+                        @click="if(@js($selectedId) !== null) open = !open"
+                        class="inline-flex items-center gap-1 px-3 py-1.5 rounded border border-gray-200 dark:border-slate-700 cursor-pointer
+                               {{ $selectedId ? 'bg-white dark:bg-slate-900 hover:bg-gray-50 dark:hover:bg-slate-800' : 'bg-gray-100 dark:bg-slate-800 text-gray-400 cursor-not-allowed' }}">
+                    <i class="fa-solid fa-hand-pointer"></i>
+                    Actions
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </button>
+
+                <div x-cloak x-show="open" @click.away="open = false"
+                     class="absolute right-0 mt-1 w-44 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded shadow-lg z-30 text-xs py-1">
+
+                    <button type="button"
+                            wire:click="selectMedia({{ $contextMenu['fileId'] }})"
+                            class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                        <i class="fa-regular fa-eye"></i> <span>Preview</span>
+                    </button>
+
+                    <button type="button"
+                            wire:click="openRenameModal"
+                            class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                        <i class="fa-regular fa-pen-to-square"></i> <span>Rename</span>
+                    </button>
+
+                    <button type="button"
+                            wire:click="makeCopy"
+                            class="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer">
+                        <i class="fa-regular fa-copy"></i> <span>Make a copy</span>
+                    </button>
+
+                    <button type="button"
+                            wire:click="openAltTextModal"
+                            class="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer">
+                        <i class="fa-regular fa-pen-to-square"></i> <span>ALT text</span>
+                    </button>
+
+                    <hr class="my-1 border-gray-200 dark:border-slate-700">
+
+                    <button type="button"
+                            wire:click="copyLink"
+                            class="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer">
+                        <i class="fa-solid fa-link"></i> <span>Copy link</span>
+                    </button>
+
+                    <button type="button"
+                            wire:click="copyIndirectLink"
+                            class="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer">
+                        <i class="fa-solid fa-arrow-up-right-from-square"></i> <span>Copy indirect link</span>
+                    </button>
+
+                    <button type="button"
+                            wire:click="share"
+                            class="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer">
+                        <i class="fa-solid fa-share"></i> <span>Share</span>
+                    </button>
+
+                    <button type="button"
+                            wire:click="addToFavorite"
+                            class="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer">
+                        <i class="fa-solid fa-star text-yellow-400"></i> <span>Add to favorite</span>
+                    </button>
+
+                    <button type="button"
+                            wire:click="download"
+                            class="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer">
+                        <i class="fa-solid fa-download"></i> <span>Download</span>
+                    </button>
+
+                    <hr class="my-1 border-gray-200 dark:border-slate-700">
+
+                    <button type="button"
+                            wire:click="moveToTrash"
+                            class="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 text-red-600 cursor-pointer">
+                        <i class="fa-solid fa-trash"></i> <span>Move to trash</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex border border-gray-200 dark:border-slate-700 rounded overflow-hidden">
+                <button type="button"
+                        wire:click="setViewMode('grid')"
+                        class="px-2 py-1 text-xs cursor-pointer {{ $viewMode === 'grid' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-900' }}">
+                    <i class="fa-solid fa-table-cells-large"></i>
+                </button>
+                <button type="button"
+                        wire:click="setViewMode('list')"
+                        class="px-2 py-1 text-xs cursor-pointer {{ $viewMode === 'list' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-900' }}">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    {{-- SEARCH + BREADCRUMB --}}
+    <div class="bg-white dark:bg-slate-900 rounded border border-gray-200 dark:border-slate-700 px-3 py-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-300">
+            <i class="fa-solid fa-image"></i>
+            <button type="button" wire:click="setFolder(null)"
+                    class="hover:underline cursor-pointer {{ $folder_id ? '' : 'font-semibold text-gray-800 dark:text-gray-100' }}">
+                All media
+            </button>
+            @if($folder_id)
+                <span>/</span>
+                <span>folder #{{ $folder_id }}</span>
+            @endif
+        </div>
+
+        <div class="flex items-center gap-2 w-full sm:w-auto">
+            <div class="relative w-full sm:w-64">
+                <input type="text"
+                       wire:model.debounce.500ms="q"
+                       placeholder="Search in current folder"
+                       class="border border-gray-300 dark:border-slate-600 rounded pl-8 pr-2 py-1 text-xs w-full bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-slate-500">
+                <span class="absolute left-2 top-1.5 text-gray-400 dark:text-gray-500 text-xs">🔍</span>
+            </div>
+        </div>
+    </div>
+
+    {{-- MAIN CONTENT --}}
+    <div class="flex flex-col gap-3 lg:flex-row">
+        <div class="flex-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded p-3 max-h-[70vh] overflow-y-auto relative">
+            @if($folders->count())
+                <div class="mb-3">
+                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                        @foreach($folders as $f)
+                            <button type="button"
+                                    wire:click="setFolder({{ $f->id }})"
+                                    class="border border-gray-200 dark:border-slate-700 rounded bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 px-2 py-3 flex flex-col items-center justify-center text-[11px]
+                                           {{ $folder_id == $f->id ? 'ring-2 ring-blue-400' : '' }}">
+                                <span class="text-xl mb-1">📁</span>
+                                <span class="truncate w-full text-center">{{ $f->name }}</span>
+                            </button>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
+
+            {{-- Files (GRID view) --}}
+            @if($viewMode === 'grid')
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-2">
+                    @forelse($files as $file)
+                        <button type="button"
+                                wire:click="selectMedia({{ $file->id }})"
+                                x-on:contextmenu.prevent="$wire.call('openContextMenu', {{ $file->id }}, $event.clientX, $event.clientY)"
+                                class="relative flex flex-col items-center text-[11px] cursor-pointer rounded p-2 bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 border-2
+                                @if($selectedId === $file->id)
+                                    border-blue-500 ring-2 ring-blue-500/60 bg-blue-50 dark:bg-blue-900/30
+                                @else
+                                    border-transparent
+                                @endif
+                            ">
+                            {{-- thumbnail --}}
+                            @if(Str::startsWith($file->mime_type, 'image/'))
+                                <img src="{{ $file->url }}"
+                                     class="w-full h-20 object-cover mb-1 rounded"
+                                     alt="{{ $file->alt }}">
+                            @else
+                                <div class="w-full h-20 flex items-center justify-center bg-gray-200 dark:bg-slate-700 rounded mb-1">
+                                    📄
+                                </div>
+                            @endif
+
+                            {{-- name + info --}}
+                            <div class="w-full truncate text-center">
+                                {{ $file->name }}
+                            </div>
+                            <div class="text-[10px] text-gray-500 dark:text-gray-400">
+                                {{ $file->mime_type }} • {{ number_format($file->size/1024, 1) }} KB
+                            </div>
+
+                            {{-- selected badge --}}
+                            @if($selectedId === $file->id)
+                                <span class="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] shadow">
+                                    <i class="fa fa-check"></i>
+                                </span>
+                            @endif
+                        </button>
+                    @empty
+                        <div class="col-span-2 sm:col-span-3 md:col-span-4 lg:col-span-6 xl:col-span-8 text-center text-xs text-gray-400 dark:text-gray-500 py-8">
+                            No media found in this folder.
+                        </div>
+                    @endforelse
+                </div>
+            @else
+                {{-- LIST view --}}
+                <table class="w-full text-[11px]">
+                    <tbody>
+                    @forelse($files as $file)
+                        <tr class="border-b border-gray-200 dark:border-slate-700 last:border-0 hover:bg-gray-50 dark:hover:bg-slate-800
+                           @if($selectedId === $file->id) bg-blue-50 dark:bg-blue-900/30 @endif"
+                            x-on:contextmenu.prevent="$wire.call('openContextMenu', {{ $file->id }}, $event.clientX, $event.clientY)">
+                            <td class="py-1">
+                                <div class="flex items-center gap-2">
+                                    @if(Str::startsWith($file->mime_type, 'image/'))
+                                        <img src="{{ $file->url }}" class="w-8 h-8 object-cover rounded" alt="">
+                                    @else
+                                        <span class="w-8 h-8 flex items-center justify-center bg-gray-200 dark:bg-slate-700 rounded text-xs">📄</span>
+                                    @endif
+                                    <button type="button"
+                                            wire:click="selectMedia({{ $file->id }})"
+                                            class="truncate text-left">
+                                        {{ $file->name }}
+                                    </button>
+                                </div>
+                            </td>
+                            <td class="py-1 text-gray-500 dark:text-gray-400">
+                                {{ $file->mime_type }}
+                            </td>
+                            <td class="py-1 text-gray-500 dark:text-gray-400">
+                                {{ number_format($file->size/1024, 1) }} KB
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td class="py-4 text-center text-xs text-gray-400 dark:text-gray-500">
+                                No media found in this folder.
+                            </td>
+                        </tr>
+                    @endforelse
+                    </tbody>
+                </table>
+            @endif
+
+            {{-- LOAD MORE BUTTON --}}
+            @if($files->hasMorePages())
+                <div class="mt-3 text-center">
+                    <button type="button"
+                            wire:click="loadMore"
+                            wire:target="loadMore"
+                            wire:loading.attr="disabled"
+                            class="inline-flex items-center gap-2 px-4 py-1.5 text-xs rounded border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 cursor-pointer">
+
+                        {{-- Normal text --}}
+                        <span wire:loading.remove wire:target="loadMore">Load more</span>
+
+                        {{-- Loading অবস্থায় --}}
+                        <span wire:loading.flex wire:target="loadMore" class="items-center gap-2">
+                            <i class="fa-solid fa-circle-notch animate-spin"></i>
+                            <span>Loading...</span>
+                        </span>
+                    </button>
+                </div>
+            @endif
+
+            {{-- LEFT SIDE LOADING OVERLAY --}}
+            <div wire:loading.flex
+                 wire:target="refreshList"
+                 class="absolute inset-0 bg-white/60 dark:bg-slate-900/60 z-40 items-center justify-center text-xs backdrop-blur">
+
+                <div class="flex flex-col items-center gap-2">
+                    <i class="fa-solid fa-circle-notch animate-spin text-lg"></i>
+                    <span>Refreshing...</span>
+                </div>
+            </div>
+
+        </div>
+
+        {{-- RIGHT: preview panel --}}
+        <div class="w-full lg:w-72 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded p-3 text-xs text-gray-700 dark:text-gray-200 hidden lg:block max-h-[70vh] overflow-y-auto">
+            @php
+                $selected = $selectedId ? $files->firstWhere('id', $selectedId) : null;
+            @endphp
+
+            @if($selected)
+                {{-- Preview --}}
+                <div class="w-full aspect-square border border-gray-200 dark:border-slate-700 rounded flex items-center justify-center mb-3 bg-gray-50 dark:bg-slate-800">
+                    @if(Str::startsWith($selected->mime_type, 'image/'))
+                        <img src="{{ $selected->url }}" class="w-full h-full object-contain rounded" alt="">
+                    @else
+                        <div class="flex items-center justify-center text-4xl">📄</div>
+                    @endif
+                </div>
+
+                <div class="space-y-3">
+                    {{-- Name --}}
+                    <div>
+                        <div class="font-semibold">Name</div>
+                        <div class="bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded px-2 py-1 text-[11px] truncate">
+                            {{ $selected->name }}
+                        </div>
+                    </div>
+
+                    {{-- Full URL + Copy button --}}
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="font-semibold">Full URL</span>
+                        </div>
+
+                        <div class="flex items-center gap-1">
+                            <input type="text"
+                                   class="flex-1 border border-gray-300 dark:border-slate-600 rounded px-2 py-1 text-[11px] bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-gray-100"
+                                   readonly
+                                   value="{{ $selected->url }}">
+
+                            <button type="button"
+                                    wire:click="copyLink"
+                                    class="px-2 py-1 border border-gray-200 dark:border-slate-700 rounded bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 cursor-pointer"
+                                    title="Copy URL">
+                                <i class="fa-regular fa-clone text-[11px]"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    {{-- Size --}}
+                    <div>
+                        <div class="font-semibold">Size</div>
+                        <div class="bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded px-2 py-1 text-[11px]">
+                            {{ number_format($selected->size / 1024, 2) }} KB
+                        </div>
+                    </div>
+
+                    {{-- Uploaded at --}}
+                    <div>
+                        <div class="font-semibold">Uploaded at</div>
+                        <div class="bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded px-2 py-1 text-[11px]">
+                            {{ $selected->created_at?->format('Y-m-d H:i:s') ?? '—' }}
+                        </div>
+                    </div>
+
+                    {{-- Modified at --}}
+                    <div>
+                        <div class="font-semibold">Modified at</div>
+                        <div class="bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded px-2 py-1 text-[11px]">
+                            {{ $selected->updated_at?->format('Y-m-d H:i:s') ?? '—' }}
+                        </div>
+                    </div>
+
+                    {{-- Alt text --}}
+                    <div>
+                        <div class="font-semibold">Alt text</div>
+                        <div class="bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded px-2 py-1 text-[11px] truncate">
+                            {{ $selected->alt ?? '—' }}
+                        </div>
+                    </div>
+
+                    {{-- Width / Height --}}
+                    @if(!empty($selected->width) || !empty($selected->height))
+                        <div>
+                            <div class="font-semibold">Dimensions</div>
+                            <div class="bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded px-2 py-1 text-[11px]">
+                                {{ $selected->width ?? '—' }}px
+                                @if(!empty($selected->height))
+                                    × {{ $selected->height }}px
+                                @endif
+                            </div>
+                        </div>
+                    @endif
+
+                    {{-- MIME type --}}
+                    <div>
+                        <div class="font-semibold">MIME type</div>
+                        <div class="bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded px-2 py-1 text-[11px] truncate">
+                            {{ $selected->mime_type }}
+                        </div>
+                    </div>
+                </div>
+            @else
+                <div class="w-full aspect-square border border-gray-200 dark:border-slate-700 rounded flex items-center justify-center mb-3 bg-gray-50 dark:bg-slate-800">
+                    <i class="fa-solid fa-image text-gray-400 dark:text-gray-500 text-8xl"></i>
+                </div>
+                <p class="text-[11px] text-gray-500 dark:text-gray-400">
+                    কোনো ফাইল সিলেক্ট করলে এখানে প্রিভিউ ও তথ্য দেখাবে।
+                </p>
+            @endif
+        </div>
+    </div>
+
+    {{-- URL UPLOAD MODAL --}}
+    @if($showUrlModal)
+        <div class="fixed inset-0 z-40 flex items-center justify-center bg-black/40"
+             wire:click.self="closeUrlModal">
+            <div class="bg-white dark:bg-slate-900 rounded shadow-lg w-full max-w-md p-4 border border-gray-200 dark:border-slate-700">
+                <h3 class="text-sm font-semibold mb-3">Upload from URL</h3>
+
+                <div class="mb-3">
+                    <label class="block text-xs text-gray-600 dark:text-gray-300 mb-1">File URL</label>
+                    <input type="text"
+                           wire:model.defer="urlInput"
+                           class="w-full border border-gray-300 dark:border-slate-600 rounded px-2 py-1 text-xs bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-slate-500"
+                           placeholder="https://example.com/image.jpg">
+                    @error('urlInput')
+                    <div class="text-red-500 text-[11px] mt-1">{{ $message }}</div>
+                    @enderror
+                </div>
+
+                <div class="flex justify-end gap-2 mt-2">
+                    <button type="button"
+                            wire:click="closeUrlModal"
+                            class="px-3 py-1 text-xs border border-gray-200 dark:border-slate-700 rounded cursor-pointer bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700">
+                        Cancel
+                    </button>
+                    <button type="button"
+                            wire:click="uploadFromUrl"
+                            wire:loading.attr="disabled"
+                            class="px-3 py-1 text-xs rounded bg-blue-600 text-white cursor-pointer">
+                        Upload
+                    </button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- ALT TEXT MODAL --}}
+    @if($showAltModal)
+        @php
+            $current = $selectedId ? $files->firstWhere('id', $selectedId) : null;
+            $ext = $current ? strtoupper(pathinfo($current->name, PATHINFO_EXTENSION) ?: 'FILE') : '';
+        @endphp
+
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+             wire:click.self="closeAltTextModal">
+            <div class="bg-white dark:bg-slate-900 rounded shadow-lg w-full max-w-md border border-gray-200 dark:border-slate-700">
+                <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-slate-700">
+                    <h3 class="text-sm font-semibold">Alt text</h3>
+                    <button type="button"
+                            wire:click="closeAltTextModal"
+                            class="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-lg leading-none">&times;</button>
+                </div>
+
+                <div class="p-4 space-y-3">
+                    <div class="border border-gray-300 dark:border-slate-600 rounded flex items-center overflow-hidden">
+                        @if($ext)
+                            <span class="px-3 py-2 text-[11px] uppercase bg-gray-100 dark:bg-slate-800 border-r border-gray-200 dark:border-slate-700 text-gray-500 dark:text-gray-300">
+                                {{ $ext }}
+                            </span>
+                        @endif
+                        <input type="text"
+                               wire:model.defer="altTextInput"
+                               class="flex-1 px-3 py-2 text-sm outline-none bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-slate-500"
+                               placeholder="Describe this image for accessibility">
+                    </div>
+                    @error('altTextInput')
+                    <div class="text-red-500 text-[11px]">{{ $message }}</div>
+                    @enderror
+                </div>
+
+                <div class="px-4 py-3 border-t border-gray-200 dark:border-slate-700 flex justify-end gap-2">
+                    <button type="button"
+                            wire:click="closeAltTextModal"
+                            class="px-3 py-1.5 text-xs border border-gray-200 dark:border-slate-700 rounded bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700">
+                        Close
+                    </button>
+                    <button type="button"
+                            wire:click="saveAltText"
+                            wire:loading.attr="disabled"
+                            class="px-3 py-1.5 text-xs rounded bg-blue-600 text-white">
+                        Save changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- RENAME MODAL --}}
+    @if($showRenameModal)
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+             wire:click.self="closeRenameModal">
+            <div class="bg-white rounded shadow-lg w-full max-w-sm">
+                <div class="flex items-center justify-between px-4 py-3 border-b">
+                    <h3 class="text-sm font-semibold">Rename file</h3>
+                    <button type="button"
+                            wire:click="closeRenameModal"
+                            class="text-gray-400 hover:text-gray-700 text-lg leading-none">&times;</button>
+                </div>
+
+                <div class="p-4 space-y-3">
+                    <label class="block text-xs text-gray-600 mb-1">New name</label>
+                    <input type="text"
+                           wire:model.defer="renameInput"
+                           class="w-full border rounded px-2 py-1.5 text-sm">
+                    @error('renameInput')
+                    <div class="text-red-500 text-[11px] mt-1">{{ $message }}</div>
+                    @enderror
+                </div>
+
+                <div class="px-4 py-3 border-t flex justify-end gap-2">
+                    <button type="button"
+                            wire:click="closeRenameModal"
+                            class="px-3 py-1.5 text-xs border rounded">
+                        Cancel
+                    </button>
+                    <button type="button"
+                            wire:click="saveRename"
+                            wire:loading.attr="disabled"
+                            class="px-3 py-1.5 text-xs rounded bg-blue-600 text-white">
+                        Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+
+    {{-- ========== RIGHT CLICK CONTEXT MENU ========== --}}
+    @if($contextMenu['show'])
+        <div class="fixed inset-0 z-40" wire:click="closeContextMenu"></div>
+
+        <div class="fixed z-50 bg-white border rounded shadow-lg w-44 text-xs py-1"
+             style="top: {{ $contextMenu['y'] }}px; left: {{ $contextMenu['x'] }}px;">
+
+            {{-- যদি Trash scope এ থাকি তাহলে এই মেনু --}}
+            @if($scope === 'trash')
+
+                <button type="button"
+                        wire:click="selectMedia({{ $contextMenu['fileId'] }})"
+                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                    <i class="fa-regular fa-eye"></i> <span>Preview</span>
+                </button>
+
+                <button type="button"
+                        wire:click="openRenameModal"
+                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                    <i class="fa-regular fa-pen-to-square"></i> <span>Rename</span>
+                </button>
+
+                <button type="button"
+                        wire:click="download"
+                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                    <i class="fa-solid fa-download"></i> <span>Download</span>
+                </button>
+
+                <button type="button"
+                        wire:click="deletePermanently"
+                        class="w-full px-3 py-1.5 text-left hover:bg-red-50 text-red-600 cursor-pointer">
+                    <i class="fa-solid fa-trash-can"></i> <span>Delete permanently</span>
+                </button>
+
+                <button type="button"
+                        wire:click="restoreFromTrash"
+                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                    <i class="fa-solid fa-rotate-left"></i> <span>Restore</span>
+                </button>
+
+            @else
+                {{-- normal (all / recent / favorites) context menu --}}
+                <button type="button"
+                        wire:click="selectMedia({{ $contextMenu['fileId'] }})"
+                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                    <i class="fa-regular fa-eye"></i> <span>Preview</span>
+                </button>
+
+                <button type="button"
+                        wire:click="openRenameModal"
+                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                    <i class="fa-regular fa-pen-to-square"></i> <span>Rename</span>
+                </button>
+
+                <button type="button"
+                        wire:click="makeCopy"
+                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                    <i class="fa-solid fa-copy"></i> <span>Make a copy</span>
+                </button>
+
+                <button type="button"
+                        wire:click="openAltTextModal"
+                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                    <i class="fa-regular fa-pen-to-square"></i> <span>Alt text</span>
+                </button>
+
+                <hr class="my-1">
+
+                <button type="button"
+                        wire:click="copyLink"
+                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                    <i class="fa-solid fa-link"></i> <span>Copy link</span>
+                </button>
+
+                <button type="button"
+                        wire:click="copyIndirectLink"
+                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                    <i class="fa-solid fa-arrow-up-right-from-square"></i> <span>Copy indirect link</span>
+                </button>
+
+                <button type="button"
+                        wire:click="download"
+                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                    <i class="fa-solid fa-download"></i> <span>Download</span>
+                </button>
+
+                <hr class="my-1">
+
+                <button type="button"
+                        wire:click="moveToTrash"
+                        class="w-full px-3 py-1.5 text-left hover:bg-red-50 text-red-600 cursor-pointer">
+                    <i class="fa-solid fa-trash"></i> <span>Move to trash</span>
+                </button>
+            @endif
+        </div>
+    @endif
+
+    {{-- ========== CREATE FOLDER MODAL ========== --}}
+    @if($showFolderModal)
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+             wire:click.self="closeFolderModal">
+            <div class="bg-white dark:bg-slate-900 rounded shadow-lg w-full max-w-sm border border-gray-200 dark:border-slate-700">
+                <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-slate-700">
+                    <h3 class="text-sm font-semibold">Create new folder</h3>
+                    <button type="button"
+                            wire:click="closeFolderModal"
+                            class="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-lg leading-none cursor-pointer">
+                        &times;
+                    </button>
+                </div>
+
+                <div class="p-4 space-y-3">
+                    <div>
+                        <label class="block text-xs text-gray-600 dark:text-gray-300 mb-1">Folder name</label>
+                        <input type="text"
+                               wire:model.defer="newFolderName"
+                               class="w-full border border-gray-300 dark:border-slate-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-slate-500"
+                               placeholder="e.g. banners, categories">
+                        @error('newFolderName')
+                        <div class="text-red-500 text-[11px] mt-1">{{ $message }}</div>
+                        @enderror
+                    </div>
+                </div>
+
+                <div class="px-4 py-3 border-t border-gray-200 dark:border-slate-700 flex justify-end gap-2">
+                    <button type="button"
+                            wire:click="closeFolderModal"
+                            class="px-3 py-1.5 text-xs border border-gray-200 dark:border-slate-700 rounded cursor-pointer bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700">
+                        Cancel
+                    </button>
+                    <button type="button"
+                            wire:click="createFolder"
+                            wire:loading.attr="disabled"
+                            class="px-3 py-1.5 text-xs rounded bg-blue-600 text-white cursor-pointer">
+                        Create
+                    </button>
+                </div>
+            </div>
+        </div>
+    @endif
+</div>
+
+
+<script>
+    if (!window.__mediaCopyListenerAdded) {
+        window.__mediaCopyListenerAdded = true;
+
+        document.addEventListener('livewire:init', () => {
+            Livewire.on('media-copy-link', (payload) => {
+                const url = payload?.url || (Array.isArray(payload) ? payload[0]?.url : null);
+                if (!url) return;
+
+                const copyFallback = (text) => {
+                    const temp = document.createElement('input');
+                    temp.value = text;
+                    document.body.appendChild(temp);
+                    temp.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(temp);
+                };
+
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(url).catch(() => copyFallback(url));
+                } else {
+                    copyFallback(url);
+                }
+
+                // চাইলে এখানে তোমার নিজের toast system কল করতে পারো
+                // উদাহরণ: window.dispatchEvent(new CustomEvent('media-toast', {...}))
+                console.log('Media link copied:', url);
+            });
+
+            // ⬇️ Download
+            Livewire.on('media-download', (payload) => {
+                const url = payload?.url || (Array.isArray(payload) ? payload[0]?.url : null);
+                if (!url) return;
+
+                // নতুন ট্যাবে / same tab-এ ওপেন করতে পারো
+                const a = document.createElement('a');
+                a.href = url;
+                a.target = '_blank';   // চাইলে '_self' করে দিতে পারো
+                a.download = '';       // ব্রাউজারকে hint দেয় "download" করার জন্য
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            });
+        });
+    }
+</script>

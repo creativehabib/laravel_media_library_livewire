@@ -1,0 +1,828 @@
+<?php
+
+namespace Habib\MediaManager\Http\Livewire;
+
+use Habib\MediaManager\Models\MediaFile;
+use Habib\MediaManager\Models\MediaFolder;
+use Habib\MediaManager\Models\MediaTag;
+use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
+use Livewire\Component;
+use Livewire\WithFileUploads;
+use Livewire\WithPagination;
+
+class MediaManager extends Component
+{
+    use WithFileUploads, WithPagination;
+
+    protected $listeners = [
+        'media-manager-opened' => 'onOpened',
+        'media-manager-insert' => 'onInsert',
+        'media-insert' => 'handleMediaInsert',
+    ];
+
+    protected $paginationTheme = 'tailwind';
+
+    public $perPage;
+
+    // LOCAL uploads (Livewire temp files)
+    public $uploads = [];
+
+    // Filters / state
+    public $q = '';
+    public $mime = '';
+    public $visibility = '';
+    public $from;
+    public $to;
+    public $folder_id;
+    public $tag;
+    public $viewMode = 'grid';     // grid | list
+    public $sort = 'name-asc';     // name-asc | name-desc | newest | oldest
+
+    public $selectedDisk;
+    public $tagsInput;
+
+    // Selected file for preview + actions
+    public $selectedId;
+
+    // URL upload modal
+    public $showUrlModal = false;
+    public $urlInput;
+
+    // All media / Trash / Recent / Favorites
+    public $scope = 'all'; // all | trash | recent | favorites
+
+    // ALT text modal
+    public $showAltModal = false;
+    public $altTextInput = '';
+
+    // Right-click context menu state
+    public $contextMenu = [
+        'show'   => false,
+        'x'      => 0,
+        'y'      => 0,
+        'fileId' => null,
+    ];
+
+    public $showFolderModal = false;
+    public $newFolderName   = '';
+    protected $queryString = [
+        'q',
+        'mime',
+        'visibility',
+        'from',
+        'to',
+        'folder_id',
+        'tag',
+        'viewMode',
+        'sort',
+        'scope',
+    ];
+
+    public function mount()
+    {
+        $this->selectedDisk = config('mediamanager.default_disk', 'public');
+
+        $this->resetPerPage();
+
+        if (! in_array($this->scope, ['all', 'trash', 'recent', 'favorites'])) {
+            $this->scope = 'all';
+        }
+    }
+
+    /* ========= LOCAL upload (auto) ========= */
+
+    public function updatedUploads()
+    {
+        if (empty($this->uploads)) {
+            return;
+        }
+
+        $this->validate([
+            'uploads.*' => 'required|file|max:20480',
+        ]);
+
+        foreach ($this->uploads as $file) {
+            $path = $file->store(
+                'media/' . now()->format('Y/m/d'),
+                $this->selectedDisk
+            );
+
+            $media = MediaFile::create([
+                'name'       => $file->getClientOriginalName(),
+                'folder_id'  => $this->folder_id,
+                'disk'       => $this->selectedDisk,
+                'path'       => $path,
+                'mime_type'  => $file->getMimeType(),
+                'size'       => $file->getSize(),
+                'visibility' => $this->visibility ?: 'public',
+            ]);
+
+            if ($this->tagsInput) {
+                $tagIds = collect(explode(',', $this->tagsInput))
+                    ->map(fn ($t) => trim($t))
+                    ->filter()
+                    ->map(fn ($t) => MediaTag::firstOrCreate(['name' => $t])->id);
+
+                $media->tags()->sync($tagIds);
+            }
+
+            // প্রিভিউতে দেখানোর জন্য
+            $this->selectedId = $media->id;
+        }
+
+        $this->reset('uploads');
+        $this->resetPage();
+    }
+
+    /* ========= Upload from URL ========= */
+
+    public function openUrlModal()
+    {
+        $this->resetErrorBag('urlInput');
+        $this->urlInput     = '';
+        $this->showUrlModal = true;
+    }
+
+    public function closeUrlModal()
+    {
+        $this->showUrlModal = false;
+    }
+
+    public function uploadFromUrl()
+    {
+        $this->validate([
+            'urlInput' => 'required|url',
+        ], [
+            'urlInput.required' => 'Please enter an URL.',
+            'urlInput.url'      => 'Invalid URL.',
+        ]);
+
+        $url = $this->urlInput;
+
+        try {
+            $contents = @file_get_contents($url);
+
+            if ($contents === false) {
+                $this->addError('urlInput', 'Unable to download file from URL.');
+                return;
+            }
+
+            // ফাইল নাম বের করি
+            $parsed = parse_url($url);
+            $path   = $parsed['path'] ?? 'file';
+            $name   = basename($path) ?: 'file-' . time();
+
+            $storePath = 'media/' . now()->format('Y/m/d') . '/' . uniqid() . '-' . $name;
+
+            Storage::disk($this->selectedDisk)->put($storePath, $contents);
+
+            $size  = strlen($contents);
+            $finfo = new \finfo(FILEINFO_MIME_TYPE);
+            $mime  = $finfo->buffer($contents) ?: 'application/octet-stream';
+
+            $media = MediaFile::create([
+                'name'       => $name,
+                'folder_id'  => $this->folder_id,
+                'disk'       => $this->selectedDisk,
+                'path'       => $storePath,
+                'mime_type'  => $mime,
+                'size'       => $size,
+                'visibility' => $this->visibility ?: 'public',
+            ]);
+
+            if ($this->tagsInput) {
+                $tagIds = collect(explode(',', $this->tagsInput))
+                    ->map(fn ($t) => trim($t))
+                    ->filter()
+                    ->map(fn ($t) => MediaTag::firstOrCreate(['name' => $t])->id);
+
+                $media->tags()->sync($tagIds);
+            }
+
+            $this->selectedId   = $media->id;
+            $this->showUrlModal = false;
+            $this->urlInput     = null;
+            $this->resetPage();
+        } catch (\Throwable $e) {
+            $this->addError('urlInput', 'Error while downloading: ' . $e->getMessage());
+        }
+    }
+
+    public function loadMore()
+    {
+        $this->perPage += config('mediamanager.default_per_page', 24);
+    }
+    public function onOpened()
+    {
+        // দরকার হলে reset selection ইত্যাদি
+    }
+
+    public function onInsert($payload)
+    {
+        if (! $this->selectedId) return;
+
+        $file = MediaFile::find($this->selectedId);
+        if (! $file) return;
+
+        $this->dispatch('media-manager-selected', [
+            'fieldId' => $payload['fieldId'] ?? null,
+            'url'     => $file->url,
+        ]);
+    }
+
+    // Habib\MediaManager\Http\Livewire\MediaManager.php
+
+    public function insertSelected()
+    {
+        if (!$this->selectedId) {
+            return;
+        }
+
+        $file = MediaFile::withTrashed()->find($this->selectedId);
+        if (! $file) {
+            return;
+        }
+
+        // যেই ফাইল সিলেক্ট হয়েছে – তার তথ্য পাঠাচ্ছি
+        $this->dispatch(
+            'media-selected',
+            id: $file->id,
+            url: $file->url,
+            name: $file->name,
+            mime: $file->mime_type,
+        );
+    }
+    #[On('media-insert')]
+    public function handleMediaInsert(): void
+    {
+        $this->insertSelected();
+    }
+
+    /* ========= Actions ========= */
+
+    public function makeCopy()
+    {
+        if (! $this->selectedId) {
+            return;
+        }
+
+        $file = MediaFile::withTrashed()->find($this->selectedId);
+        if (! $file) {
+            return;
+        }
+
+        $disk = $file->disk;
+        $ext  = pathinfo($file->path, PATHINFO_EXTENSION);
+        $base = pathinfo($file->path, PATHINFO_FILENAME);
+
+        $newPath = 'media/copies/' . $base . '_copy_' . uniqid() . ($ext ? ".{$ext}" : '');
+
+        Storage::disk($disk)->copy($file->path, $newPath);
+
+        $copy = MediaFile::create([
+            'name'       => $file->name . ' (copy)',
+            'folder_id'  => $file->folder_id,
+            'disk'       => $disk,
+            'path'       => $newPath,
+            'mime_type'  => $file->mime_type,
+            'size'       => $file->size,
+            'visibility' => $file->visibility,
+        ]);
+
+        $this->selectedId = $copy->id;
+        $this->resetPage();
+        $this->toast('File copied successfully.');
+        // ✅ context menu বন্ধ
+        $this->closeContextMenu();
+    }
+
+    /**
+     * Move to trash (soft delete) অথবা Trash থেকে permanent delete
+     */
+    public function moveToTrash()
+    {
+        if (! $this->selectedId) {
+            return;
+        }
+
+        $file = MediaFile::withTrashed()->find($this->selectedId);
+        if (! $file) {
+            return;
+        }
+
+        // যদি আগেই ট্র্যাশে থাকে → permanent delete
+        if ($file->trashed()) {
+            $this->deleteMedia($file->id);
+        } else {
+            $file->delete();
+            $this->selectedId = null;
+        }
+
+        $this->resetPage();
+        $this->closeContextMenu(); // ✅
+    }
+
+    /**
+     * Add to favorite (toggle)
+     */
+    public function addToFavorite()
+    {
+        if (! $this->selectedId) {
+            return;
+        }
+
+        $file = MediaFile::withTrashed()->find($this->selectedId);
+        if (! $file) {
+            return;
+        }
+
+        $file->is_favorite = ! $file->is_favorite;
+        $file->save();
+
+        $this->closeContextMenu(); // ✅
+    }
+
+    /* ========= ALT TEXT MODAL ========= */
+
+    public function openAltTextModal()
+    {
+        if (! $this->selectedId) {
+            return;
+        }
+
+        $file = MediaFile::withTrashed()->find($this->selectedId);
+        if (! $file) {
+            return;
+        }
+
+        $this->altTextInput = $file->alt ?? '';
+        $this->showAltModal = true;
+        $this->resetErrorBag('altTextInput');
+
+        $this->closeContextMenu(); // ✅ context menu বন্ধ, modal খোলা থাকবে
+    }
+
+    public function closeAltTextModal()
+    {
+        $this->showAltModal = false;
+    }
+
+    public function saveAltText()
+    {
+        $this->validate([
+            'altTextInput' => 'nullable|string|max:255',
+        ], [
+            'altTextInput.max' => 'Alt text may not be greater than 255 characters.',
+        ]);
+
+        if (! $this->selectedId) {
+            return;
+        }
+
+        $file = MediaFile::withTrashed()->find($this->selectedId);
+        if (! $file) {
+            return;
+        }
+
+        $file->alt = $this->altTextInput;
+        $file->save();
+
+        $this->showAltModal = false;
+    }
+
+    /* ========= Copy link / indirect link ========= */
+
+    public function copyLink()
+    {
+        if (! $this->selectedId) {
+            return;
+        }
+
+        $file = MediaFile::withTrashed()->find($this->selectedId);
+        if (! $file) {
+            return;
+        }
+
+        $this->dispatch('media-copy-link', url: $file->url);
+
+        $this->closeContextMenu(); // ✅
+    }
+
+    public function copyIndirectLink()
+    {
+        if (! $this->selectedId) {
+            return;
+        }
+
+        $file = MediaFile::withTrashed()->find($this->selectedId);
+        if (! $file) {
+            return;
+        }
+
+        $indirect = Route::has('mediamanager.indirect')
+            ? route('mediamanager.indirect', $file->id)
+            : $file->url;
+
+        $this->dispatch('media-copy-link', url: $indirect);
+
+        $this->closeContextMenu(); // ✅
+    }
+
+    public function download()
+    {
+        if (! $this->selectedId) {
+            return;
+        }
+
+        $file = MediaFile::withTrashed()->find($this->selectedId);
+        if (! $file) {
+            return;
+        }
+
+        // Livewire থেকে ব্রাউজারে ইভেন্ট পাঠালাম
+        $this->dispatch('media-download', url: $file->url);
+
+        // কনটেক্সট মেনু খুলে থাকলে বন্ধ করে দিই
+        $this->closeContextMenu();
+    }
+
+    public function share()
+    {
+        if (! $this->selectedId) {
+            return;
+        }
+
+        // future এ share modal / navigator.share ইত্যাদি
+
+        $this->closeContextMenu(); // ✅
+    }
+
+    /* ========= misc UI helpers ========= */
+
+    public function setFolder(?int $folderId)
+    {
+        $this->folder_id = $folderId;
+        $this->resetPage();
+    }
+
+    public function setViewMode(string $mode)
+    {
+        $this->viewMode = $mode;
+    }
+
+    public function setSort(string $sort)
+    {
+        $this->sort = $sort;
+        $this->resetPage();
+    }
+
+    protected function toast(string $message, string $type = 'success'): void
+    {
+        $this->dispatch('media-toast', message: $message, type: $type);
+    }
+
+    public function refreshList()
+    {
+        $this->reset([
+            'q',
+            'mime',
+            'visibility',
+            'from',
+            'to',
+            'folder_id',
+            'tag'
+        ]);
+        $this->scope = 'all';
+        $this->resetPerPage();
+        $this->resetPage();
+        $this->selectedId = null;
+    }
+
+    public function selectMedia(int $id)
+    {
+        if ($this->selectedId === $id) {
+            $this->selectedId = null;
+            $this->dispatch('media-unselected');
+        } else {
+            $this->selectedId = $id;
+
+            $this->dispatch('media-selected', id: $id);
+        }
+    }
+
+    public function setScope(string $scope)
+    {
+        if (! in_array($scope, ['all', 'trash', 'recent', 'favorites'])) {
+            $scope = 'all';
+        }
+
+        $this->scope      = $scope;
+        $this->selectedId = null;
+        $this->resetPage();
+        $this->resetPerPage();
+    }
+
+    /* ========= CREATE FOLDER MODAL ========= */
+
+    public function openFolderModal()
+    {
+        $this->resetErrorBag('newFolderName');
+        $this->newFolderName   = '';
+        $this->showFolderModal = true;
+    }
+
+    public function closeFolderModal()
+    {
+        $this->showFolderModal = false;
+    }
+
+    public function createFolder()
+    {
+        $this->validate([
+            'newFolderName' => 'required|string|max:191',
+        ], [
+            'newFolderName.required' => 'Folder name is required.',
+        ]);
+
+        MediaFolder::create([
+            'name'      => $this->newFolderName,
+            'parent_id' => $this->folder_id, // current folder এর নিচে তৈরি হবে
+        ]);
+
+        $this->newFolderName   = '';
+        $this->showFolderModal = false;
+
+        // ফোল্ডার লিস্ট রিফ্রেশের জন্য শুধু পেজ রি-রেন্ডার
+        $this->resetPage();
+    }
+
+    /* ========== insert (VERY IMPORTANT) ========== */
+    public function insert()
+    {
+        if (! $this->selectedId) return;
+
+        $file = MediaFile::withTrashed()->find($this->selectedId);
+        if (! $file) return;
+
+        // JS ধরে input + preview আপডেট করবে
+        $this->dispatch('media-selected', [
+            'id'   => $file->id,
+            'url'  => $file->url,
+            'name' => $file->name,
+            'mime' => $file->mime_type,
+        ]);
+
+        // চাইলে এখানে internal state reset/close করতে পারো
+        // $this->selectedId = null;
+    }
+
+    /**
+     * Permanent delete (disk + DB) – শুধু Trash থেকে
+     */
+    public function deleteMedia($id)
+    {
+        $media = MediaFile::withTrashed()->find($id);
+
+        if (! $media) {
+            return;
+        }
+
+        $disk = $media->disk;
+        $path = $media->path;
+
+        $media->forceDelete();
+
+        if ($disk && $path && Storage::disk($disk)->exists($path)) {
+            Storage::disk($disk)->delete($path);
+        }
+
+        if ($this->selectedId === $id) {
+            $this->selectedId = null;
+        }
+    }
+
+    public function emptyTrash()
+    {
+        // শুধু Trash scope এ কাজ করবে
+        if ($this->scope !== 'trash') {
+            return;
+        }
+
+        // প্রয়োজন হলে current filters apply করতে পারো
+        $filters = [
+            'q'          => $this->q,
+            'mime'       => $this->mime,
+            'visibility' => $this->visibility,
+            'from'       => $this->from,
+            'to'         => $this->to,
+            'folder_id'  => $this->folder_id,
+            'tag'        => $this->tag,
+        ];
+
+        $query = MediaFile::withTrashed()
+            ->onlyTrashed()
+            ->filter($filters);
+
+        // সেফ ভাবে chunk করে delete করি
+        $query->chunkById(100, function ($items) {
+            foreach ($items as $item) {
+                $this->deleteMedia($item->id); // তোমার আগের deleteMedia() মেথডই ব্যবহার করছি
+            }
+        });
+
+        $this->selectedId = null;
+        $this->resetPage();
+        $this->resetPerPage();
+    }
+
+    /* ========= Right-click context menu ========= */
+
+    public function openContextMenu($fileId, $x, $y)
+    {
+        $this->selectedId = $fileId;
+
+        $this->contextMenu = [
+            'show'   => true,
+            'x'      => $x,
+            'y'      => $y,
+            'fileId' => $fileId,
+        ];
+    }
+
+    public function closeContextMenu()
+    {
+        $this->contextMenu['show'] = false;
+    }
+
+    public function restoreFromTrash()
+    {
+        if(! $this->selectedId) return;
+
+        $file = MediaFile::onlyTrashed()->find($this->selectedId);
+        if (! $file) return;
+
+        $file->restore();
+        $this->selectedId = null;
+        $this->resetPage();
+        $this->closeContextMenu();
+    }
+
+    public function deletePermanently()
+    {
+        if(! $this->selectedId) return;
+        $this->deleteMedia($this->selectedId);
+        $this->resetPage();
+        $this->closeContextMenu();
+    }
+
+    public $showRenameModal = false;
+    public $renameInput = '';
+
+    public function openRenameModal()
+    {
+        if (! $this->selectedId) return;
+
+        $file = MediaFile::withTrashed()->find($this->selectedId);
+        if (! $file) return;
+
+        $this->renameInput   = $file->name;
+        $this->showRenameModal = true;
+        $this->resetErrorBag('renameInput');
+
+        $this->closeContextMenu();
+    }
+
+    public function closeRenameModal()
+    {
+        $this->showRenameModal = false;
+    }
+
+    public function saveRename()
+    {
+        $this->validate([
+            'renameInput' => 'required|string|max:191',
+        ]);
+
+        if (! $this->selectedId) return;
+
+        $file = MediaFile::withTrashed()->find($this->selectedId);
+        if (! $file) return;
+
+        $file->name = $this->renameInput;
+        $file->save();
+
+        $this->showRenameModal = false;
+    }
+
+    public function resetPerPage()
+    {
+        $this->perPage = config('mediamanager.media.perPage', 24);
+    }
+
+    public function scopeFilter($query, array $filters)
+    {
+        // 🔍 q সার্চ: name বা mime_type এর উপর
+        $query->when($filters['q'] ?? null, function ($q, $search) {
+            $q->where(function ($p) use ($search) {
+                $p->where('name', 'like', "%{$search}%")
+                    ->orWhere('mime_type', 'like', "%{$search}%")
+                    ->orWhere('alt', 'like', "%{$search}%");
+            });
+        });
+
+        // 📁 current folder
+        $query->when(array_key_exists('folder_id', $filters), function ($q) use ($filters) {
+            if ($filters['folder_id']) {
+                $q->where('folder_id', $filters['folder_id']);
+            } else {
+                $q->whereNull('folder_id');
+            }
+        });
+
+        $query->when($filters['mime'] ?? null, function ($q, $mime) {
+            $q->where('mime_type', 'like', "{$mime}%");
+        });
+
+        $query->when($filters['visibility'] ?? null, function ($q, $visibility) {
+            $q->where('visibility', $visibility);
+        });
+
+        $query->when($filters['from'] ?? null, function ($q, $from) {
+            $q->whereDate('created_at', '>=', $from);
+        });
+
+        $query->when($filters['to'] ?? null, function ($q, $to) {
+            $q->whereDate('created_at', '<=', $to);
+        });
+
+        $query->when($filters['tag'] ?? null, function ($q, $tag) {
+            $q->whereHas('tags', function ($t) use ($tag) {
+                $t->where('name', $tag);
+            });
+        });
+    }
+    /* ========= Filters change ========= */
+
+    public function updatingQ()          { $this->resetPage(); $this->resetPerPage(); }
+    public function updatingMime()       { $this->resetPage(); $this->resetPerPage(); }
+    public function updatingVisibility() { $this->resetPage(); $this->resetPerPage(); }
+    public function updatingFolderId()   { $this->resetPage(); $this->resetPerPage(); }
+    public function updatingTag()        { $this->resetPage(); $this->resetPerPage(); }
+
+    /* ========= RENDER ========= */
+
+    public function render()
+    {
+        $filters = [
+            'q'          => $this->q,
+            'mime'       => $this->mime,
+            'visibility' => $this->visibility,
+            'from'       => $this->from,
+            'to'         => $this->to,
+            'folder_id'  => $this->folder_id,
+            'tag'        => $this->tag,
+        ];
+
+        $query = MediaFile::with('tags')->filter($filters);
+
+        // scope অনুযায়ী ডাটা ফিল্টার
+        if ($this->scope === 'trash') {
+            $query->onlyTrashed();
+        } elseif ($this->scope === 'recent') {
+            $query->where('created_at', '>=', now()->subDays(7));
+        } elseif ($this->scope === 'favorites') {
+            $query->where('is_favorite', true);
+        } else {
+            // normal: শুধু non-deleted
+            $query->whereNull('deleted_at');
+        }
+
+        // sort
+        switch ($this->sort) {
+            case 'name-desc':
+                $query->orderBy('name', 'desc');
+                break;
+            case 'newest':
+                $query->orderBy('created_at', 'desc');
+                break;
+            case 'oldest':
+                $query->orderBy('created_at', 'asc');
+                break;
+            case 'name-asc':
+            default:
+                $query->orderBy('name', 'asc');
+                break;
+        }
+
+        $files   = $query->paginate($this->perPage ?? config('mediamanager.media.perPage', 24));
+        $folders = MediaFolder::with('children')->whereNull('parent_id')->get();
+        $tags    = MediaTag::orderBy('name')->get();
+
+        return view('mediamanager::livewire.manager', [
+            'files'   => $files,
+            'folders' => $folders,
+            'tags'    => $tags,
+        ]);
+    }
+}
