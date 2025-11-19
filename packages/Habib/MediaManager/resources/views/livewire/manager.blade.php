@@ -331,30 +331,13 @@
 
                     {{-- Illustration (নিজের মত path বদলে নাও) --}}
                     @if($scope === 'trash')
-                        <img src="{{ asset('images/empty-trash.svg') }}" alt="Trash is empty" class="w-56 mb-4 opacity-90">
-                        <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-200">Trash is empty</h3>
-                        <p class="text-sm mt-1">There are no files or folders in your trash currently.</p>
-
+                        @include('mediamanager::svg.trash-empty')
                     @elseif($scope === 'favorites')
-                        <img src="{{ asset('images/empty-favorites.svg') }}" alt="No favorites" class="w-56 mb-4 opacity-90">
-                        <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-200">No favorites yet</h3>
-                        <p class="text-sm mt-1">
-                            Mark media as favorite to quickly access them here.
-                        </p>
-
+                        @include('mediamanager::svg.favorites-empty')
                     @elseif($scope === 'recent')
-                        <img src="{{ asset('images/empty-recent.svg') }}" alt="No recent files" class="w-56 mb-4 opacity-90">
-                        <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-200">No recent files</h3>
-                        <p class="text-sm mt-1">
-                            You haven’t opened or uploaded any files recently.
-                        </p>
-
+                        @include('mediamanager::svg.recent-empty')
                     @else {{-- all --}}
-                    <img src="{{ asset('images/empty-all.svg') }}" alt="No media" class="w-56 mb-4 opacity-90">
-                    <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-200">No media yet</h3>
-                    <p class="text-sm mt-1">
-                        Upload files or create folders to get started.
-                    </p>
+                        @include('mediamanager::svg.all-empty')
                     @endif
                 </div>
 
