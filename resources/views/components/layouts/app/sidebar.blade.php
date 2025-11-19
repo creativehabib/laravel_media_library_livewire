@@ -129,7 +129,8 @@
         {{ $slot }}
 
         @fluxScripts
-
+        <link rel="stylesheet" href="https://unpkg.com/cropperjs@1.6.2/dist/cropper.min.css">
+        <script src="https://unpkg.com/cropperjs@1.6.2/dist/cropper.min.js"></script>
         <script src="https://cdn.ckeditor.com/4.22.1/standard/ckeditor.js"></script>
         <script>
             // CKEditor 4 ইনিশিয়ালাইজ

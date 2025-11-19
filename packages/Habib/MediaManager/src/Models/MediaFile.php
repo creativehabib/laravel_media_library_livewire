@@ -15,6 +15,8 @@ class MediaFile extends Model
         'disk',
         'path',
         'mime_type',
+        'width',
+        'height',
         'size',
         'visibility',
         'alt',

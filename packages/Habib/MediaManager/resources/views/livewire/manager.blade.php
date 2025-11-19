@@ -44,7 +44,9 @@
             <button type="button"
                     wire:click="openFolderModal"
                     class="inline-flex items-center gap-1 border border-gray-200 dark:border-slate-700 px-3 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-slate-800 cursor-pointer">
-                <i class="fa-solid fa-folder-plus"></i>
+                <span>
+                    <i class="fa-solid fa-folder-plus"></i>
+                </span>
             </button>
 
             {{-- Refresh --}}
@@ -52,7 +54,7 @@
                     wire:click="refreshList"
                     wire:loading.attr="disabled"
                     wire:target="refreshList"
-                    class="inline-flex items-center gap-1 border border-gray-200 dark:border-slate-700 px-2 py-1 rounded hover:bg-gray-50 dark:hover:bg-slate-800 cursor-pointer">
+                    class="inline-flex items-center gap-1 border border-gray-200 dark:border-slate-700 px-3 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-slate-800 cursor-pointer">
 
                 {{-- normal icon (লোডিং না থাকলে) --}}
                 <span wire:loading.remove wire:target="refreshList">
@@ -69,7 +71,7 @@
             <div x-data="{ open: false }" class="relative">
                 <button type="button"
                         @click="open = !open"
-                        class="inline-flex items-center gap-1 border border-gray-200 dark:border-slate-700 px-2 py-1 rounded hover:bg-gray-50 dark:hover:bg-slate-800 cursor-pointer">
+                        class="inline-flex items-center gap-1 border border-gray-200 dark:border-slate-700 px-3 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-slate-800 cursor-pointer">
                     <i class="fa-solid fa-filter"></i>Everything
                 </button>
 
@@ -189,7 +191,7 @@
             <div class="flex items-center gap-1">
                 <span class="text-xs text-gray-500 dark:text-gray-400">Sort</span>
                 <select wire:model.live="sort"
-                        class="border border-gray-300 dark:border-slate-600 rounded px-2 py-1 text-xs cursor-pointer bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100">
+                        class="border border-gray-300 dark:border-slate-600 rounded px-3 py-1.5 text-xs cursor-pointer bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100">
                     <option value="name-asc">A–Z</option>
                     <option value="name-desc">Z–A</option>
                     <option value="newest">Newest</option>
@@ -217,14 +219,23 @@
                      class="absolute right-0 mt-1 w-44 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded shadow-lg z-30 text-xs py-1">
 
                     <button type="button"
-                            wire:click="selectMedia({{ $contextMenu['fileId'] }})"
-                            class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                            wire:click="openPreview"
+                            class="w-full px-3 py-1.5 text-left hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer">
                         <i class="fa-regular fa-eye"></i> <span>Preview</span>
                     </button>
 
+                    @if($selected && Str::startsWith($selected->mime_type, 'image/'))
+                        <button type="button"
+                                wire:click="openCropModal({{ $selected->id }})"
+                                class="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer">
+                            <i class="fa-solid fa-crop-simple"></i>
+                            <span>Crop image</span>
+                        </button>
+                    @endif
+
                     <button type="button"
                             wire:click="openRenameModal"
-                            class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                            class="w-full px-3 py-1.5 text-left hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer">
                         <i class="fa-regular fa-pen-to-square"></i> <span>Rename</span>
                     </button>
 
@@ -284,12 +295,12 @@
             <div class="flex border border-gray-200 dark:border-slate-700 rounded overflow-hidden">
                 <button type="button"
                         wire:click="setViewMode('grid')"
-                        class="px-2 py-1 text-xs cursor-pointer {{ $viewMode === 'grid' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-900' }}">
+                        class="px-3 py-1.5 text-xs cursor-pointer {{ $viewMode === 'grid' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-900' }}">
                     <i class="fa-solid fa-table-cells-large"></i>
                 </button>
                 <button type="button"
                         wire:click="setViewMode('list')"
-                        class="px-2 py-1 text-xs cursor-pointer {{ $viewMode === 'list' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-900' }}">
+                        class="px-3 py-1.5 text-xs cursor-pointer {{ $viewMode === 'list' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-900' }}">
                     <i class="fa-solid fa-bars"></i>
                 </button>
             </div>
@@ -313,10 +324,11 @@
         <div class="flex items-center gap-2 w-full sm:w-auto">
             <div class="relative w-full sm:w-64">
                 <input type="text"
-                       wire:model.debounce.500ms="q"
+                       wire:model.live.debounce="q"
                        placeholder="Search in current folder"
-                       class="border border-gray-300 dark:border-slate-600 rounded pl-8 pr-2 py-1 text-xs w-full bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-slate-500">
-                <span class="absolute left-2 top-1.5 text-gray-400 dark:text-gray-500 text-xs">🔍</span>
+                       id="liveSearch"
+                       class="border border-gray-300 dark:border-slate-600 rounded pl-8 pr-2 py-1.5 text-xs w-full bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-slate-500">
+                <span class="absolute left-2 top-1.5 text-gray-400 dark:text-gray-500 text-xs"><i class="fa-solid fa-search"></i> </span>
             </div>
         </div>
     </div>
@@ -362,53 +374,61 @@
 
                 {{-- Files (GRID view) --}}
                 @if($viewMode === 'grid')
-                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-2">
-                        @forelse($files as $file)
-                            <button type="button"
-                                    wire:click="selectMedia({{ $file->id }})"
-                                    x-on:contextmenu.prevent="$wire.call('openContextMenu', {{ $file->id }}, $event.clientX, $event.clientY)"
-                                    class="relative flex flex-col items-center text-[11px] cursor-pointer rounded p-2 bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 border-2
-                                        @if($selectedId === $file->id)
-                                            border-blue-500 ring-2 ring-blue-500/60 bg-blue-50 dark:bg-blue-900/30
-                                        @else
-                                            border-transparent
-                                        @endif">
+                    <div class="relative min-h-[200px]">
+                        <div wire:loading.remove wire:target="q, refreshList, loadMore, mime, visibility, tag" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-2">
+                            @forelse($files as $file)
+                                <button type="button"
+                                        wire:click="selectMedia({{ $file->id }})"
+                                        wire:dblclick="openPreview({{ $file->id }})"
+                                        x-on:contextmenu.prevent="$wire.call('openContextMenu', {{ $file->id }}, $event.clientX, $event.clientY)"
+                                        class="relative flex flex-col items-center text-[11px] cursor-pointer rounded p-1.5 bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 border-2
+                                            @if($selectedId === $file->id)
+                                                border-blue-500 ring-2 ring-blue-500/60 bg-blue-50 dark:bg-blue-900/30
+                                            @else
+                                                border-transparent
+                                            @endif">
 
-                                @if(Str::startsWith($file->mime_type, 'image/'))
-                                    <img src="{{ $file->url }}"
-                                         class="w-full h-20 object-cover mb-1 rounded"
-                                         alt="{{ $file->alt }}">
-                                @else
-                                    <div class="w-full h-20 flex items-center justify-center bg-gray-200 dark:bg-slate-700 rounded mb-1">
-                                        📄
+                                    @if(Str::startsWith($file->mime_type, 'image/'))
+                                        <img src="{{ $file->url }}"
+                                             class="w-full h-20 object-cover mb-1 rounded"
+                                             alt="{{ $file->alt }}">
+                                    @else
+                                        <div class="w-full h-20 flex items-center justify-center bg-gray-200 dark:bg-slate-700 rounded mb-1">
+                                            📄
+                                        </div>
+                                    @endif
+
+                                    <div class="w-full truncate text-center">
+                                        {{ $file->name }}
                                     </div>
-                                @endif
 
-                                <div class="w-full truncate text-center">
-                                    {{ $file->name }}
+                                    @if($selectedId === $file->id)
+                                        <span class="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] shadow">
+                                            <i class="fa fa-check"></i>
+                                        </span>
+                                    @endif
+                                </button>
+                            @empty
+                                <div class="col-span-2 sm:col-span-3 md:col-span-4 lg:col-span-6 xl:col-span-8 text-center text-xs text-gray-400 dark:text-gray-500 py-8">
+                                    No media found in this folder.
                                 </div>
-                                <div class="text-[10px] text-gray-500 dark:text-gray-400">
-                                    {{ $file->mime_type }} • {{ number_format($file->size/1024, 1) }} KB
-                                </div>
-
-                                @if($selectedId === $file->id)
-                                    <span class="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] shadow">
-                                        <i class="fa fa-check"></i>
-                                    </span>
-                                @endif
-                            </button>
-                        @empty
-                            <div class="col-span-2 sm:col-span-3 md:col-span-4 lg:col-span-6 xl:col-span-8 text-center text-xs text-gray-400 dark:text-gray-500 py-8">
-                                No media found in this folder.
+                            @endforelse
+                        </div>
+                        {{-- 🔄 LOADING OVERLAY --}}
+                        <div wire:loading.flex wire:target="q, refreshList, loadMore, mime, visibility, tag"
+                             class="absolute inset-0 bg-white/70 dark:bg-slate-900/70 backdrop-blur-sm z-20 flex items-center justify-center rounded">
+                            <div class="flex flex-col items-center gap-2 text-xs">
+                                <i class="fa-solid fa-circle-notch animate-spin text-lg"></i>
+                                <span>Loading...</span>
                             </div>
-                        @endforelse
+                        </div>
                     </div>
                 @else
                     {{-- LIST view --}}
                     <table class="w-full text-[11px]">
                         <tbody>
                         @forelse($files as $file)
-                            <tr class="border-b border-gray-200 dark:border-slate-700 last:border-0 hover:bg-gray-50 dark:hover:bg-slate-800
+                            <tr wire:click="selectMedia({{ $file->id }})" wire:dblclick="openPreview({{ $file->id }})" class="border-b cursor-pointer border-gray-200 dark:border-slate-700 last:border-0 hover:bg-gray-50 dark:hover:bg-slate-800
                                @if($selectedId === $file->id) bg-blue-50 dark:bg-blue-900/30 @endif"
                                 x-on:contextmenu.prevent="$wire.call('openContextMenu', {{ $file->id }}, $event.clientX, $event.clientY)">
                                 <td class="py-1">
@@ -418,11 +438,9 @@
                                         @else
                                             <span class="w-8 h-8 flex items-center justify-center bg-gray-200 dark:bg-slate-700 rounded text-xs">📄</span>
                                         @endif
-                                        <button type="button"
-                                                wire:click="selectMedia({{ $file->id }})"
-                                                class="truncate text-left">
+                                        <span class="truncate text-left">
                                             {{ $file->name }}
-                                        </button>
+                                        </span>
                                     </div>
                                 </td>
                                 <td class="py-1 text-gray-500 dark:text-gray-400">
@@ -587,7 +605,7 @@
                     <label class="block text-xs text-gray-600 dark:text-gray-300 mb-1">File URL</label>
                     <input type="text"
                            wire:model.defer="urlInput"
-                           class="w-full border border-gray-300 dark:border-slate-600 rounded px-2 py-1 text-xs bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-slate-500"
+                           class="w-full border border-gray-300 dark:border-slate-600 rounded px-3 py-2 text-xs bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-slate-500"
                            placeholder="https://example.com/image.jpg" autofocus>
 
                     @error('urlInput')
@@ -598,7 +616,7 @@
                 <div class="flex justify-end gap-2 mt-2">
                     <button type="button"
                             wire:click="closeUrlModal"
-                            class="px-3 py-1 text-xs border border-gray-200 dark:border-slate-700 rounded cursor-pointer bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700">
+                            class="px-3 py-1.5 text-xs border border-gray-200 dark:border-slate-700 rounded cursor-pointer bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700">
                         Cancel
                     </button>
 
@@ -607,7 +625,7 @@
                             wire:click="uploadFromUrl"
                             wire:target="uploadFromUrl"
                             wire:loading.attr="disabled"
-                            class="px-3 py-1 text-xs rounded bg-blue-600 text-white cursor-pointer flex items-center gap-1">
+                            class="px-3 py-1.5 text-xs rounded bg-blue-600 text-white cursor-pointer flex items-center gap-1">
 
                         <span wire:loading.remove wire:target="uploadFromUrl">
                             Upload
@@ -729,6 +747,89 @@
             </div>
         </div>
     @endif
+
+    {{-- IMAGE CROP MODAL --}}
+    @if($showCropModal && $cropFileId)
+        @php
+            $cropFile = $files->firstWhere('id', $cropFileId)
+                ?? \Habib\MediaManager\Models\MediaFile::find($cropFileId);
+        @endphp
+
+        @if($cropFile && Str::startsWith($cropFile->mime_type, 'image/'))
+            <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+                 wire:click.self="closeCropModal">
+                <div class="bg-white dark:bg-slate-900 rounded shadow-lg w-full max-w-5xl border border-gray-200 dark:border-slate-700 flex flex-col overflow-hidden">
+
+                    {{-- Header --}}
+                    <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-slate-700">
+                        <h3 class="text-sm font-semibold">Crop</h3>
+                        <button type="button"
+                                wire:click="closeCropModal"
+                                class="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-lg leading-none">
+                            &times;
+                        </button>
+                    </div>
+
+                    {{-- Body --}}
+                    <div class="px-4 py-4 flex gap-4">
+                        {{-- Left: image --}}
+                        <div class="flex-1 max-h-[70vh] overflow-auto border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 flex items-center justify-center">
+                            <img
+                                id="cropper-image"
+                                src="{{ $cropFile->url }}"
+                                class="max-w-full h-auto block"
+                                alt="Crop image">
+                        </div>
+
+                        {{-- Right: controls --}}
+                        <div class="w-56 space-y-4 text-xs text-gray-700 dark:text-gray-200">
+                            <div>
+                                <label for="cropper-height" class="block mb-1 font-semibold">Height</label>
+                                <input type="number"
+                                       id="cropper-height"
+                                       class="w-full border border-gray-300 dark:border-slate-600 rounded px-2 py-1 bg-white dark:bg-slate-900">
+                            </div>
+
+                            <div>
+                                <label for="cropper-width" class="block mb-1 font-semibold">Width</label>
+                                <input type="number"
+                                       id="cropper-width"
+                                       class="w-full border border-gray-300 dark:border-slate-600 rounded px-2 py-1 bg-white dark:bg-slate-900">
+                            </div>
+
+                            <div class="pt-1">
+                                <label class="inline-flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox"
+                                           id="cropper-aspect"
+                                           class="rounded border-gray-300 dark:border-slate-600">
+                                    <span>Aspect ratio</span>
+                                </label>
+                                <p class="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                                    Aspect ratio অন করলে current crop ratio lock থাকবে (Botble এর মত)।
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {{-- Footer --}}
+                    <div class="px-4 py-3 border-t border-gray-200 dark:border-slate-700 flex justify-end gap-2">
+                        <button type="button"
+                                wire:click="closeCropModal"
+                                class="px-3 py-1.5 text-xs border border-gray-200 dark:border-slate-700 rounded bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700">
+                            Close
+                        </button>
+
+                        <button type="button"
+                                id="cropper-apply-btn"
+                                class="px-3 py-1.5 text-xs rounded bg-blue-600 text-white cursor-pointer flex items-center gap-1 hover:bg-blue-700">
+                            <span>Crop</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        @endif
+    @endif
+
 
     {{-- EMPTY TRASH CONFIRM MODAL --}}
     @if($showEmptyTrashModal)
@@ -892,76 +993,84 @@
     @if($contextMenu['show'])
         <div class="fixed inset-0 z-40" wire:click="closeContextMenu"></div>
 
-        <div class="fixed z-50 bg-white border rounded shadow-lg w-44 text-xs py-1"
+        <div class="fixed z-50 bg-white dark:bg-slate-900 border rounded shadow-lg w-44 text-xs py-1 dark:border-slate-800"
              style="top: {{ $contextMenu['y'] }}px; left: {{ $contextMenu['x'] }}px;">
 
             {{-- যদি Trash scope এ থাকি তাহলে এই মেনু --}}
             @if($scope === 'trash')
                 <button type="button"
-                        wire:click="selectMedia({{ $contextMenu['fileId'] }})"
-                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                        wire:click="openPreview({{ $contextMenu['fileId'] }})"
+                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer">
                     <i class="fa-regular fa-eye"></i> <span>Preview</span>
                 </button>
 
                 <button type="button"
                         wire:click="openRenameModal"
-                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer">
                     <i class="fa-regular fa-pen-to-square"></i> <span>Rename</span>
                 </button>
 
                 <button type="button"
                         wire:click="download"
-                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer">
                     <i class="fa-solid fa-download"></i> <span>Download</span>
                 </button>
 
                 <button type="button"
                         wire:click="openDeletePermanentModal({{ $contextMenu['fileId'] }})"
-                        class="w-full px-3 py-1.5 text-left hover:bg-red-50 text-red-600 cursor-pointer">
+                        class="w-full px-3 py-1.5 text-left hover:bg-red-50 dark:hover:bg-slate-800 text-red-600 cursor-pointer">
                     <i class="fa-solid fa-trash-can"></i> <span>Delete permanently</span>
                 </button>
 
                 <button type="button"
                         wire:click="restoreFromTrash"
-                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer">
                     <i class="fa-solid fa-rotate-left"></i> <span>Restore</span>
                 </button>
 
             @else
                 {{-- normal (all / recent / favorites) context menu --}}
                 <button type="button"
-                        wire:click="selectMedia({{ $contextMenu['fileId'] }})"
-                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                        wire:click="openPreview({{ $contextMenu['fileId'] }})"
+                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer">
                     <i class="fa-regular fa-eye"></i> <span>Preview</span>
                 </button>
 
+                @if(Str::startsWith(optional($files->firstWhere('id', $contextMenu['fileId']))->mime_type, 'image/'))
+                    <button type="button"
+                            wire:click="openCropModal({{ $contextMenu['fileId'] }})"
+                            class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                        <i class="fa-solid fa-crop-simple"></i> <span>Crop image</span>
+                    </button>
+                @endif
+
                 <button type="button"
                         wire:click="openRenameModal"
-                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer">
                     <i class="fa-regular fa-pen-to-square"></i> <span>Rename</span>
                 </button>
 
                 <button type="button"
                         wire:click="makeCopy"
-                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer">
                     <i class="fa-solid fa-copy"></i> <span>Make a copy</span>
                 </button>
 
                 <button type="button"
                         wire:click="openAltTextModal"
-                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer">
                     <i class="fa-regular fa-pen-to-square"></i> <span>Alt text</span>
                 </button>
 
                 <button type="button"
                         wire:click="copyLink"
-                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer">
                     <i class="fa-solid fa-link"></i> <span>Copy link</span>
                 </button>
 
                 <button type="button"
                         wire:click="copyIndirectLink"
-                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer">
                     <i class="fa-solid fa-arrow-up-right-from-square"></i> <span>Copy indirect link</span>
                 </button>
 
@@ -974,18 +1083,82 @@
 
                 <button type="button"
                         wire:click="download"
-                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 cursor-pointer">
+                        class="w-full px-3 py-1.5 text-left hover:bg-gray-100 dark:hover:bg-slate-800 cursor-pointer">
                     <i class="fa-solid fa-download"></i> <span>Download</span>
                 </button>
 
                 <button type="button"
                         wire:click="moveToTrash"
-                        class="w-full px-3 py-1.5 text-left hover:bg-red-50 text-red-600 cursor-pointer">
+                        class="w-full px-3 py-1.5 text-left hover:bg-red-50 text-red-600 dark:hover:bg-slate-800 cursor-pointer">
                     <i class="fa-solid fa-trash"></i> <span>Move to trash</span>
                 </button>
             @endif
         </div>
     @endif
+
+    {{-- FULLSCREEN IMAGE PREVIEW (Botble style) --}}
+    @if($showPreview && $selectedId)
+        @php
+            $previewFile = \Habib\MediaManager\Models\MediaFile::withTrashed()->find($selectedId);
+        @endphp
+
+        @if($previewFile)
+            <div
+                class="fixed inset-0 z-50 bg-black/80 flex items-center justify-center"
+                wire:click.self="closePreview"
+                x-data="{
+                isFullscreen: false,
+                toggleFullscreen() {
+                    const el = this.$refs.previewWrapper;
+
+                    // already fullscreen?
+                    if (!document.fullscreenElement) {
+                        if (el.requestFullscreen) {
+                            el.requestFullscreen();
+                        } else if (el.webkitRequestFullscreen) {   // Safari
+                            el.webkitRequestFullscreen();
+                        } else if (el.msRequestFullscreen) {       // old IE
+                            el.msRequestFullscreen();
+                        }
+                        this.isFullscreen = true;
+                    } else {
+                        if (document.exitFullscreen) {
+                            document.exitFullscreen();
+                        } else if (document.webkitExitFullscreen) {
+                            document.webkitExitFullscreen();
+                        } else if (document.msExitFullscreen) {
+                            document.msExitFullscreen();
+                        }
+                        this.isFullscreen = false;
+                    }
+                }
+            }"
+                x-on:keydown.escape.window="$wire.call('closePreview')"
+                x-ref="previewWrapper"
+            >
+
+                {{-- Close icon --}}
+                <button type="button"
+                        wire:click="closePreview"
+                        class="absolute top-4 right-4 text-white/80 hover:text-white text-2xl leading-none cursor-pointer">
+                    <i class="fa-solid fa-close"></i>
+                </button>
+
+                {{-- 🔍 Fullscreen toggle button --}}
+                <button type="button"
+                        @click.stop="toggleFullscreen()"
+                        class="absolute top-4 right-16 text-white/80 hover:text-white text-xl cursor-pointer">
+                    <i class="fa-solid fa-expand"></i>
+                </button>
+
+                {{-- Centered big image --}}
+                <img src="{{ $previewFile->url }}"
+                     alt="{{ $previewFile->alt ?? $previewFile->name }}"
+                     class="max-w-[95vw] max-h-[90vh] object-contain rounded shadow-2xl select-none">
+            </div>
+        @endif
+    @endif
+
 
     {{-- ========== CREATE FOLDER MODAL ========== --}}
     @if($showFolderModal)
@@ -1042,7 +1215,6 @@
     </div>
 </div>
 
-
 <script>
     if (!window.__mediaCopyListenerAdded) {
         window.__mediaCopyListenerAdded = true;
@@ -1085,6 +1257,138 @@
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
+            });
+
+            // ========= CROP SYSTEM =========
+            let cropper = null;
+
+            Livewire.on('init-cropper', (payload) => {
+                // Livewire component ধরে নাই
+                const component = Livewire.find(payload.id);
+
+                setTimeout(() => {
+                    const img    = document.getElementById('cropper-image');
+                    const hInput = document.getElementById('cropper-height');
+                    const wInput = document.getElementById('cropper-width');
+                    const aspect = document.getElementById('cropper-aspect');
+                    const btn    = document.getElementById('cropper-apply-btn');
+
+                    if (!img) {
+                        console.warn('cropper-image not found in DOM');
+                        return;
+                    }
+
+                    if (typeof Cropper === 'undefined') {
+                        console.error('CropperJS is not loaded');
+                        return;
+                    }
+
+                    if (cropper) {
+                        cropper.destroy();
+                        cropper = null;
+                    }
+
+                    cropper = new Cropper(img, {
+                        viewMode: 1,
+                        dragMode: 'move',
+                        autoCropArea: 0.8,
+                        responsive: true,
+                        background: false,
+
+                        ready() {
+                            const data = cropper.getData(true);
+                            if (hInput) hInput.value = Math.round(data.height || 0);
+                            if (wInput) wInput.value = Math.round(data.width || 0);
+                        },
+
+                        crop() {
+                            const data = cropper.getData(true);
+                            if (hInput && document.activeElement !== hInput) {
+                                hInput.value = Math.round(data.height || 0);
+                            }
+                            if (wInput && document.activeElement !== wInput) {
+                                wInput.value = Math.round(data.width || 0);
+                            }
+                        },
+                    });
+
+                    // ========= Aspect ratio toggle =========
+                    if (aspect && !aspect.dataset.bound) {
+                        aspect.dataset.bound = '1';
+                        aspect.addEventListener('change', () => {
+                            if (!cropper) return;
+
+                            if (aspect.checked) {
+                                const data  = cropper.getData(true);
+                                const ratio = data.width && data.height
+                                    ? data.width / data.height
+                                    : 16 / 9;
+
+                                cropper.setAspectRatio(ratio);
+                            } else {
+                                // free mode
+                                cropper.setAspectRatio(NaN);
+                            }
+                        });
+                    }
+
+                    // ========= Height/width ইনপুট থেকে crop আপডেট =========
+                    const bindSizeInput = (input, dimension) => {
+                        if (!input || input.dataset.bound) return;
+
+                        input.dataset.bound = '1';
+
+                        input.addEventListener('input', () => {
+                            if (!cropper) return;
+
+                            const val = parseInt(input.value || '0', 10);
+                            if (!val || val <= 0) return;
+
+                            const data = cropper.getData(true);
+
+                            if (dimension === 'height') {
+                                data.height = val;
+
+                                if (aspect && aspect.checked && data.width && data.height) {
+                                    const ratio = data.width / data.height;
+                                    data.width  = Math.round(val * ratio);
+                                    if (wInput) wInput.value = data.width;
+                                }
+                            } else {
+                                data.width = val;
+
+                                if (aspect && aspect.checked && data.width && data.height) {
+                                    const ratio  = data.width / data.height;
+                                    data.height  = Math.round(val / ratio);
+                                    if (hInput) hInput.value = data.height;
+                                }
+                            }
+
+                            cropper.setData(data);
+                        });
+                    };
+
+                    bindSizeInput(hInput, 'height');
+                    bindSizeInput(wInput, 'width');
+
+                    // ========= Crop button =========
+                    if (btn && !btn.dataset.bound) {
+                        btn.dataset.bound = '1';
+
+                        btn.addEventListener('click', () => {
+                            if (!cropper || !component) return;
+
+                            const data = cropper.getData(true);
+
+                            component.call('saveCroppedImage', {
+                                x: Math.round(data.x),
+                                y: Math.round(data.y),
+                                width: Math.round(data.width),
+                                height: Math.round(data.height),
+                            });
+                        });
+                    }
+                }, 50);
             });
         });
     }

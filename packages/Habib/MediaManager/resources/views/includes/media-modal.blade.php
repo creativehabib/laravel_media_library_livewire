@@ -21,7 +21,7 @@
     </div>
 
     {{-- Modal --}}
-    <div class="relative bg-white dark:bg-slate-900 rounded-lg shadow-xl w-[95vw] sm:w-[90vw] lg:w-[70vw] max-w-8xl max-h-[90vh] flex flex-col pb-2 overflow-hidden border border-gray-200 dark:border-slate-700">
+    <div class="relative bg-white dark:bg-slate-900 rounded-lg shadow-xl w-[100vw] sm:w-[90vw] lg:w-[75vw] max-h-[90vh] flex flex-col pb-2 overflow-hidden border border-gray-200 dark:border-slate-700">
 
         {{-- Header --}}
         <div class="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-slate-700 shrink-0">
@@ -41,8 +41,7 @@
 
         {{-- Footer: Insert / Close --}}
         <div class="px-4 py-3 border-t border-gray-200 dark:border-slate-700 flex justify-end gap-2 shrink-0 bg-white dark:bg-slate-900">
-            <button type="button"
-                    @click="open = false"
+            <button type="button" @click="open = false"
                     class="px-3 py-1.5 text-xs border border-gray-200 dark:border-slate-700 rounded-md cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800 text-gray-800 dark:text-gray-100">
                 Close
             </button>

@@ -7,6 +7,8 @@ use Habib\MediaManager\Models\MediaFolder;
 use Habib\MediaManager\Models\MediaTag;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Intervention\Image\Laravel\Facades\Image as ImageManager;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 use Livewire\WithPagination;
@@ -40,10 +42,10 @@ class MediaManager extends Component
     public $visibility = '';
     public $from;
     public $to;
-    public $folder_id;
+    public ?int $folder_id = null;
     public $tag;
-    public $viewMode = 'grid';     // grid | list
-    public $sort = 'name-asc';     // name-asc | name-desc | newest | oldest
+    public $viewMode = 'grid';
+    public $sort = 'name-asc';
 
     public $selectedDisk;
     public $tagsInput;
@@ -56,7 +58,7 @@ class MediaManager extends Component
     public $urlInput;
 
     // All media / Trash / Recent / Favorites
-    public $scope = 'all'; // all | trash | recent | favorites
+    public string $scope = 'all'; // all | trash | recent | favorites
 
     // ALT text modal
     public $showAltModal = false;
@@ -84,6 +86,12 @@ class MediaManager extends Component
         'sort',
         'scope',
     ];
+
+    // Image crop
+    public bool $showCropModal = false;
+    public ?int $cropFileId = null;
+    public bool $showPreview = false;
+    public ?MediaFile $previewFile = null;
 
     public function mount()
     {
@@ -114,6 +122,18 @@ class MediaManager extends Component
                 $this->selectedDisk
             );
 
+            $mime = $file->getMimeType();
+            $size = $file->getSize();
+            $width = null;
+            $height = null;
+
+            // if image then calculate dimension
+            if(Str::startsWith($mime, 'image/')) {
+                $image = ImageManager::read($file->getRealPath());
+                $width = $image->width();
+                $height = $image->height();
+            }
+
             $media = MediaFile::create([
                 'name'       => $file->getClientOriginalName(),
                 'folder_id'  => $this->folder_id,
@@ -122,6 +142,8 @@ class MediaManager extends Component
                 'mime_type'  => $file->getMimeType(),
                 'size'       => $file->getSize(),
                 'visibility' => $this->visibility ?: 'public',
+                'width'      => $width,
+                'height'     => $height,
             ]);
 
             if ($this->tagsInput) {
@@ -186,6 +208,16 @@ class MediaManager extends Component
             $size  = strlen($contents);
             $finfo = new \finfo(FILEINFO_MIME_TYPE);
             $mime  = $finfo->buffer($contents) ?: 'application/octet-stream';
+            $width = null;
+            $height = null;
+
+
+            if(Str::startsWith($mime, 'image/')) {
+                $fullPath = Storage::disk($this->selectedDisk)->path($storePath);
+                $image = ImageManager::read($fullPath);
+                $width = $image->width();
+                $height = $image->height();
+            }
 
             $media = MediaFile::create([
                 'name'       => $name,
@@ -195,6 +227,8 @@ class MediaManager extends Component
                 'mime_type'  => $mime,
                 'size'       => $size,
                 'visibility' => $this->visibility ?: 'public',
+                'width'      => $width,
+                'height'     => $height,
             ]);
 
             if ($this->tagsInput) {
@@ -236,8 +270,6 @@ class MediaManager extends Component
             'url'     => $file->url,
         ]);
     }
-
-    // Habib\MediaManager\Http\Livewire\MediaManager.php
 
     public function insertSelected()
     {
@@ -299,8 +331,6 @@ class MediaManager extends Component
         $this->selectedId = $copy->id;
         $this->resetPage();
         $this->toast('File duplicate successfully.');
-        // ✅ context menu বন্ধ
-        $this->closeContextMenu();
     }
 
     /**
@@ -371,9 +401,6 @@ class MediaManager extends Component
             : 'Favorite থেকে সরানো হয়েছে।';
 
         $this->toast($message);
-//        $this->dispatch('media-toast', type: 'success', message: $message);
-
-        // যদি Favorites scope এ থাকি এবং আমরা favorite OFF করে ফেলি
         if ($this->scope === 'favorites' && ! $file->is_favorite) {
             $this->selectedId = null;
             $this->resetPage();
@@ -382,6 +409,102 @@ class MediaManager extends Component
         $this->closeContextMenu();
     }
 
+    /* ======= IMAGE CROP =========== */
+    public function openCropModal(int $fileId): void
+    {
+        $file = MediaFile::withTrashed()->find($fileId);
+
+        if (! $file || ! Str::startsWith($file->mime_type, 'image/')) {
+            return;
+        }
+
+        $this->cropFileId    = $fileId;
+        $this->showCropModal = true;
+
+        $this->closeContextMenu();
+        $this->dispatch('init-cropper', id: $this->getId());
+    }
+
+    public function closeCropModal(): void
+    {
+        $this->showCropModal = false;
+        $this->cropFileId = null;
+    }
+
+    /**
+     * @param array $crop
+     * @return void
+     */
+    public function saveCroppedImage(array $crop): void
+    {
+        if (! $this->cropFileId) {
+            return;
+        }
+
+        $file = MediaFile::withTrashed()->find($this->cropFileId);
+
+        if (! $file || ! Str::startsWith($file->mime_type, 'image/')) {
+            return;
+        }
+
+        $x      = (int) round($crop['x'] ?? 0);
+        $y      = (int) round($crop['y'] ?? 0);
+        $width  = (int) round($crop['width'] ?? 0);
+        $height = (int) round($crop['height'] ?? 0);
+
+        if ($width <= 0 || $height <= 0) {
+            return;
+        }
+
+        $disk     = $file->disk ?? 'public';
+        $path     = $file->path;
+        $fullPath = Storage::disk($disk)->path($path);
+
+        // ✅ v3: read()
+        $image = ImageManager::read($fullPath);
+
+        // v3 এর crop signature: crop(width, height, x, y)
+        $image->crop($width, $height, $x, $y);
+
+        // v3 এও এভাবে সেভ করা যায়
+        $image->save($fullPath);
+
+        // meta আপডেট
+        $file->size   = filesize($fullPath);
+        $file->width  = $image->width();
+        $file->height = $image->height();
+        $file->save();
+
+        $this->showCropModal = false;
+        $this->cropFileId    = null;
+
+        $this->refreshList();
+
+        $this->toast('Image cropped successfully.', 'warning');
+    }
+
+    public function openPreview(?int $id = null): void
+    {
+        $id = $id ?: $this->selectedId;
+
+        $file = MediaFile::withTrashed()->find($id);
+        if (! $file || !str_starts_with($file->mime_type, 'image/')) {
+            return;
+        }
+
+        $this->selectedId   = $id;
+        $this->previewFile  = $file;
+        $this->showPreview  = true;
+
+        $this->closeContextMenu();
+    }
+
+    // Close Preview
+    public function closePreview(): void
+    {
+        $this->showPreview = false;
+        $this->previewFile = null;
+    }
 
     /* ========= ALT TEXT MODAL ========= */
 
@@ -400,7 +523,7 @@ class MediaManager extends Component
         $this->showAltModal = true;
         $this->resetErrorBag('altTextInput');
 
-        $this->closeContextMenu(); // ✅ context menu বন্ধ, modal খোলা থাকবে
+        $this->closeContextMenu();
     }
 
     public function closeAltTextModal()

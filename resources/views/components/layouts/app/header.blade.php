@@ -136,7 +136,6 @@
                 <span x-text="message"></span>
             </div>
         </div>
-        @include('mediamanager::includes.media-modal')
 
         @fluxScripts
         @mediaSelectorStylesInline
