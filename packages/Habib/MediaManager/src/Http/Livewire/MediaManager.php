@@ -52,6 +52,7 @@ class MediaManager extends Component
 
     // Selected file for preview + actions
     public $selectedId;
+    public ?MediaFile $selected = null; // ✅ সাইড প্যানেলের জন্য প্রপার্টি যোগ করা হয়েছে
 
     // URL upload modal
     public $showUrlModal = false;
@@ -282,7 +283,7 @@ class MediaManager extends Component
             return;
         }
 
-        // যেই ফাইল সিলেক্ট হয়েছে – তার তথ্য পাঠাচ্ছি
+        // যেই ফাইল সিলেক্ট হয়েছে – তার তথ্য পাঠাচ্ছি
         $this->dispatch(
             'media-selected',
             id: $file->id,
@@ -298,6 +299,15 @@ class MediaManager extends Component
     }
 
     /* ========= Actions ========= */
+
+    /**
+     * Livewire State & Selected File (Preview Panel) কে রিফ্রেশ করে
+     */
+    protected function refreshState()
+    {
+        // Livewire-কে বলে যে পুরো কম্পোনেন্টের স্টেট রিফ্রেশ করতে হবে
+        $this->dispatch('$refresh');
+    }
 
     public function makeCopy()
     {
@@ -331,6 +341,7 @@ class MediaManager extends Component
         $this->selectedId = $copy->id;
         $this->resetPage();
         $this->toast('File duplicate successfully.');
+        $this->refreshState(); // ✅
     }
 
     /**
@@ -375,6 +386,7 @@ class MediaManager extends Component
         $this->resetPerPage();
 
         $this->showMoveToTrashModal = false;
+        $this->refreshState(); // ✅
     }
 
     /**
@@ -397,8 +409,8 @@ class MediaManager extends Component
 
         // 🔔 Toast message
         $message = $file->is_favorite
-            ? 'Favorite-এ যোগ করা হয়েছে।'
-            : 'Favorite থেকে সরানো হয়েছে।';
+            ? 'Favorite-এ যোগ করা হয়েছে।'
+            : 'Favorite থেকে সরানো হয়েছে।';
 
         $this->toast($message);
         if ($this->scope === 'favorites' && ! $file->is_favorite) {
@@ -407,6 +419,7 @@ class MediaManager extends Component
         }
 
         $this->closeContextMenu();
+        $this->refreshState(); // ✅
     }
 
     /* ======= IMAGE CROP =========== */
@@ -452,7 +465,9 @@ class MediaManager extends Component
         $width  = (int) round($crop['width'] ?? 0);
         $height = (int) round($crop['height'] ?? 0);
 
+        // সেফটি চেক
         if ($width <= 0 || $height <= 0) {
+            $this->toast('Invalid crop dimensions.', 'error');
             return;
         }
 
@@ -460,16 +475,16 @@ class MediaManager extends Component
         $path     = $file->path;
         $fullPath = Storage::disk($disk)->path($path);
 
-        // ✅ v3: read()
+        // Intervention Image ব্যবহার করে ফাইল লোড
         $image = ImageManager::read($fullPath);
 
-        // v3 এর crop signature: crop(width, height, x, y)
+        // মূল ক্রপিং অপারেশন: x, y, width, height অনুযায়ী ক্রপ
         $image->crop($width, $height, $x, $y);
 
-        // v3 এও এভাবে সেভ করা যায়
+        // নতুন ক্রপ করা ইমেজটি ফাইল সিস্টেমে সেভ (ওভাররাইট)
         $image->save($fullPath);
 
-        // meta আপডেট
+        // ডেটাবেস আপডেট
         $file->size   = filesize($fullPath);
         $file->width  = $image->width();
         $file->height = $image->height();
@@ -477,10 +492,9 @@ class MediaManager extends Component
 
         $this->showCropModal = false;
         $this->cropFileId    = null;
-
-        $this->refreshList();
-
-        $this->toast('Image cropped successfully.', 'warning');
+        $this->resetPage();
+        $this->refreshState(); // ✅ Livewire স্টেট রিফ্রেশ
+        $this->toast('Image cropped successfully.', 'success');
     }
 
     public function openPreview(?int $id = null): void
@@ -554,6 +568,7 @@ class MediaManager extends Component
         $this->toast('File alt text saved successfully.');
 
         $this->showAltModal = false;
+        $this->refreshState(); // ✅
     }
 
     /* ========= Copy link / indirect link ========= */
@@ -776,7 +791,7 @@ class MediaManager extends Component
             return;
         }
 
-        // প্রয়োজন হলে current filters apply করতে পারো
+        // প্রয়োজন হলে current filters apply করতে পারো
         $filters = [
             'q'          => $this->q,
             'mime'       => $this->mime,
@@ -879,11 +894,13 @@ class MediaManager extends Component
         $this->selectedId = $fileId;
 
         $this->contextMenu = [
-            'show'   => true,
+            'show'   => false, // ইনিশিয়ালি বন্ধ থাকুক
             'x'      => $x,
             'y'      => $y,
             'fileId' => $fileId,
         ];
+        // context menu দেখানোর জন্য manual call
+        $this->contextMenu['show'] = true;
     }
 
     public function closeContextMenu()
@@ -942,6 +959,7 @@ class MediaManager extends Component
 
         $this->showRenameModal = false;
         $this->toast('File successfully renamed.');
+        $this->refreshState(); // ✅
     }
 
     public function resetPerPage()
@@ -991,7 +1009,7 @@ class MediaManager extends Component
             });
         });
     }
-    /* ========= Filters change ========= */
+    /* ========= Filters change (No change needed here) ========= */
 
     public function updatingQ()          { $this->resetPage(); $this->resetPerPage(); }
     public function updatingMime()       { $this->resetPage(); $this->resetPerPage(); }
@@ -1003,6 +1021,11 @@ class MediaManager extends Component
 
     public function render()
     {
+        // ✅ ফিক্স: রেন্ডার হওয়ার আগে সিলেক্টেড ফাইলটি (সাইড প্যানেলের জন্য) ডেটাবেস থেকে রিফ্রেশ করা
+        $this->selected = $this->selectedId
+            ? MediaFile::withTrashed()->find($this->selectedId)
+            : null;
+
         $filters = [
             'q'          => $this->q,
             'mime'       => $this->mime,
@@ -1015,7 +1038,7 @@ class MediaManager extends Component
 
         $query = MediaFile::with('tags')->filter($filters);
 
-        // scope অনুযায়ী ডাটা ফিল্টার
+        // scope অনুযায়ী ডাটা ফিল্টার
         if ($this->scope === 'trash') {
             $query->onlyTrashed();
         } elseif ($this->scope === 'recent') {

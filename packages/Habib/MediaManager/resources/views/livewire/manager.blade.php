@@ -49,7 +49,7 @@
                 </span>
             </button>
 
-            {{-- Refresh --}}
+            {{-- Refresh: wire:target="refreshList" (For Refreshing...) --}}
             <button type="button"
                     wire:click="refreshList"
                     wire:loading.attr="disabled"
@@ -61,7 +61,7 @@
                     <i class="fa-solid fa-sync"></i>
                 </span>
 
-                {{-- loading অবস্থায় spinner icon --}}
+                {{-- loading অবস্থায় spinner icon --}}
                 <span wire:loading wire:target="refreshList" class="flex items-center gap-1">
                     <i class="fa-solid fa-circle-notch animate-spin"></i>
                 </span>
@@ -200,6 +200,10 @@
             </div>
 
             {{-- Actions dropdown --}}
+            @php
+                // Livewire Component থেকে $selected প্রপার্টি ব্যবহার
+                $selected = $this->selected;
+            @endphp
             <div x-data="{ open: false }" class="relative">
                 <button type="button"
                         @click="if(@js($selectedId) !== null) open = !open"
@@ -212,9 +216,7 @@
                               d="M19 9l-7 7-7-7"/>
                     </svg>
                 </button>
-                @php
-                    $selected = $selectedId ? $files->firstWhere('id', $selectedId) : null;
-                @endphp
+
                 <div x-cloak x-show="open" @click.away="open = false"
                      class="absolute right-0 mt-1 w-44 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded shadow-lg z-30 text-xs py-1">
 
@@ -349,7 +351,7 @@
                     @elseif($scope === 'recent')
                         @include('mediamanager::svg.recent-empty')
                     @else {{-- all --}}
-                        @include('mediamanager::svg.all-empty')
+                    @include('mediamanager::svg.all-empty')
                     @endif
                 </div>
 
@@ -375,7 +377,20 @@
                 {{-- Files (GRID view) --}}
                 @if($viewMode === 'grid')
                     <div class="relative min-h-[200px]">
-                        <div wire:loading.remove wire:target="q, refreshList, loadMore, mime, visibility, tag" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-2">
+
+                        {{-- 🔄 SEARCH/FILTER/SCOPE LOADING OVERLAY (Loading...) --}}
+                        <div wire:loading.flex
+                             wire:target="q, mime, visibility, tag, sort, loadMore, setScope, setFolder"
+                             class="absolute inset-0 bg-white/70 dark:bg-slate-900/70 backdrop-blur-sm z-20 flex items-center justify-center rounded">
+                            <div class="flex flex-col items-center gap-2 text-xs">
+                                <i class="fa-solid fa-circle-notch animate-spin text-lg"></i>
+                                <span>Loading...</span>
+                            </div>
+                        </div>
+
+                        <div wire:loading.remove
+                             wire:target="q, mime, visibility, tag, sort, loadMore, setScope, setFolder"
+                             class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-2">
                             @forelse($files as $file)
                                 <button type="button"
                                         wire:click="selectMedia({{ $file->id }})"
@@ -389,7 +404,7 @@
                                             @endif">
 
                                     @if(Str::startsWith($file->mime_type, 'image/'))
-                                        <img src="{{ $file->url }}"
+                                        <img src="{{ $file->url }}?t={{now()->timestamp}}"
                                              class="w-full h-20 object-cover mb-1 rounded"
                                              alt="{{ $file->alt }}">
                                     @else
@@ -414,14 +429,6 @@
                                 </div>
                             @endforelse
                         </div>
-                        {{-- 🔄 LOADING OVERLAY --}}
-                        <div wire:loading.flex wire:target="q, refreshList, loadMore, mime, visibility, tag"
-                             class="absolute inset-0 bg-white/70 dark:bg-slate-900/70 backdrop-blur-sm z-20 flex items-center justify-center rounded">
-                            <div class="flex flex-col items-center gap-2 text-xs">
-                                <i class="fa-solid fa-circle-notch animate-spin text-lg"></i>
-                                <span>Loading...</span>
-                            </div>
-                        </div>
                     </div>
                 @else
                     {{-- LIST view --}}
@@ -434,7 +441,7 @@
                                 <td class="py-1">
                                     <div class="flex items-center gap-2">
                                         @if(Str::startsWith($file->mime_type, 'image/'))
-                                            <img src="{{ $file->url }}" class="w-8 h-8 object-cover rounded" alt="">
+                                            <img src="{{ $file->url }}?t={{ now()->timestamp }}" class="w-8 h-8 object-cover rounded" alt="">
                                         @else
                                             <span class="w-8 h-8 flex items-center justify-center bg-gray-200 dark:bg-slate-700 rounded text-xs">📄</span>
                                         @endif
@@ -481,7 +488,8 @@
                 @endif
             @endif {{-- end empty-states / list switch --}}
 
-            {{-- LEFT SIDE LOADING OVERLAY --}}
+            {{-- 🔄 FULL REFRESH LOADING OVERLAY (Refreshing...) --}}
+            {{-- Targets: refreshList (only the dedicated refresh button) --}}
             <div wire:loading.flex
                  wire:target="refreshList"
                  class="absolute inset-0 bg-white/60 dark:bg-slate-900/60 z-40 items-center justify-center text-xs backdrop-blur">
@@ -500,7 +508,8 @@
                 {{-- Preview --}}
                 <div class="w-full aspect-square border border-gray-200 dark:border-slate-700 rounded flex items-center justify-center mb-3 bg-gray-50 dark:bg-slate-800">
                     @if(Str::startsWith($selected->mime_type, 'image/'))
-                        <img src="{{ $selected->url }}" class="w-full h-full object-contain rounded" alt="">
+                        {{-- Add a unique query parameter to force browser refresh --}}
+                        <img src="{{ $selected->url }}?t={{ $selected->updated_at?->timestamp }}" class="w-full h-full object-contain rounded" alt="{{ $selected->alt }}">
                     @else
                         <div class="flex items-center justify-center text-4xl">📄</div>
                     @endif
@@ -631,7 +640,7 @@
                             Upload
                         </span>
 
-                            <span wire:loading.flex wire:target="uploadFromUrl" class="items-center gap-1">
+                        <span wire:loading.flex wire:target="uploadFromUrl" class="items-center gap-1">
                             <i class="fa-solid fa-circle-notch animate-spin"></i>
                             Uploading...
                         </span>
@@ -671,7 +680,7 @@
                                placeholder="Describe this image for accessibility">
                     </div>
                     @error('altTextInput')
-                    <div class="text-red-500 text-[11px]">{{ $message }}</div>
+                    <div class="text-red-500 text-[11px] mt-1">{{ $message }}</div>
                     @enderror
                 </div>
 
@@ -1152,7 +1161,7 @@
                 </button>
 
                 {{-- Centered big image --}}
-                <img src="{{ $previewFile->url }}"
+                <img src="{{ $previewFile->url }}?t={{ $previewFile->updated_at?->timestamp }}"
                      alt="{{ $previewFile->alt ?? $previewFile->name }}"
                      class="max-w-[95vw] max-h-[90vh] object-contain rounded shadow-2xl select-none">
             </div>
@@ -1253,17 +1262,16 @@
                 const a = document.createElement('a');
                 a.href = url;
                 a.target = '_blank';   // চাইলে '_self' করে দিতে পারো
-                a.download = '';       // ব্রাউজারকে hint দেয় "download" করার জন্য
+                a.download = '';       // ব্রাউজারকে hint দেয় "download" করার জন্য
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
             });
 
-            // ========= CROP SYSTEM =========
+            // ========= CROP SYSTEM (SENSITIVE PART) =========
             let cropper = null;
 
             Livewire.on('init-cropper', (payload) => {
-                // Livewire component ধরে নাই
                 const component = Livewire.find(payload.id);
 
                 setTimeout(() => {
@@ -1273,13 +1281,8 @@
                     const aspect = document.getElementById('cropper-aspect');
                     const btn    = document.getElementById('cropper-apply-btn');
 
-                    if (!img) {
-                        console.warn('cropper-image not found in DOM');
-                        return;
-                    }
-
-                    if (typeof Cropper === 'undefined') {
-                        console.error('CropperJS is not loaded');
+                    if (!img || typeof Cropper === 'undefined') {
+                        console.error('CropperJS or image not found');
                         return;
                     }
 
@@ -1288,21 +1291,34 @@
                         cropper = null;
                     }
 
+                    // Aspect ratio-কে ডিফল্টভাবে আনচেক নিশ্চিত করি (Fix for Free Cropping)
+                    if (aspect) {
+                        aspect.checked = false;
+                    }
+
+
                     cropper = new Cropper(img, {
                         viewMode: 1,
                         dragMode: 'move',
                         autoCropArea: 0.8,
                         responsive: true,
                         background: false,
+                        aspectRatio: NaN, // নিশ্চিত করি যে ডিফল্ট মোড free-form
 
                         ready() {
                             const data = cropper.getData(true);
                             if (hInput) hInput.value = Math.round(data.height || 0);
                             if (wInput) wInput.value = Math.round(data.width || 0);
+
+                            // initial free crop mode যদি চেক না থাকে
+                            if(aspect && !aspect.checked) {
+                                cropper.setAspectRatio(NaN);
+                            }
                         },
 
                         crop() {
                             const data = cropper.getData(true);
+                            // যদি ইনপুট ফিল্ড active না থাকে, তবে cropper এর মান দেখাও
                             if (hInput && document.activeElement !== hInput) {
                                 hInput.value = Math.round(data.height || 0);
                             }
@@ -1312,7 +1328,7 @@
                         },
                     });
 
-                    // ========= Aspect ratio toggle =========
+                    // ========= Aspect ratio toggle (Fixed Logic) =========
                     if (aspect && !aspect.dataset.bound) {
                         aspect.dataset.bound = '1';
                         aspect.addEventListener('change', () => {
@@ -1322,17 +1338,23 @@
                                 const data  = cropper.getData(true);
                                 const ratio = data.width && data.height
                                     ? data.width / data.height
-                                    : 16 / 9;
+                                    : NaN;
 
-                                cropper.setAspectRatio(ratio);
+                                if (ratio && !isNaN(ratio)) {
+                                    cropper.setAspectRatio(ratio);
+                                } else {
+                                    // Fallback: যদি কোনো এরিয়া সিলেক্ট করা না থাকে, তবে 16:9 ডিফল্ট
+                                    cropper.setAspectRatio(16 / 9);
+                                }
+
                             } else {
-                                // free mode
+                                // Free Mode
                                 cropper.setAspectRatio(NaN);
                             }
                         });
                     }
 
-                    // ========= Height/width ইনপুট থেকে crop আপডেট =========
+                    // ========= Height/width ইনপুট থেকে crop আপডেট (Fixed Logic) =========
                     const bindSizeInput = (input, dimension) => {
                         if (!input || input.dataset.bound) return;
 
@@ -1345,39 +1367,44 @@
                             if (!val || val <= 0) return;
 
                             const data = cropper.getData(true);
+                            const currentRatio = data.width / data.height;
+
+                            let newData = { x: data.x, y: data.y, width: data.width, height: data.height };
 
                             if (dimension === 'height') {
-                                data.height = val;
+                                newData.height = val;
 
-                                if (aspect && aspect.checked && data.width && data.height) {
-                                    const ratio = data.width / data.height;
-                                    data.width  = Math.round(val * ratio);
-                                    if (wInput) wInput.value = data.width;
+                                if (aspect && aspect.checked && !isNaN(currentRatio)) {
+                                    // Aspect Ratio Lock থাকলে width-কেও আপডেট করি
+                                    newData.width = Math.round(val * currentRatio);
+                                    if (wInput) wInput.value = newData.width;
                                 }
-                            } else {
-                                data.width = val;
+                            } else { // dimension === 'width'
+                                newData.width = val;
 
-                                if (aspect && aspect.checked && data.width && data.height) {
-                                    const ratio  = data.width / data.height;
-                                    data.height  = Math.round(val / ratio);
-                                    if (hInput) hInput.value = data.height;
+                                if (aspect && aspect.checked && !isNaN(currentRatio)) {
+                                    // Aspect Ratio Lock থাকলে height-কেও আপডেট করি
+                                    newData.height = Math.round(val / currentRatio);
+                                    if (hInput) hInput.value = newData.height;
                                 }
                             }
 
-                            cropper.setData(data);
+                            // নতুন ডাটা দিয়ে ক্রপার আপডেট
+                            cropper.setData(newData);
                         });
                     };
 
                     bindSizeInput(hInput, 'height');
                     bindSizeInput(wInput, 'width');
 
-                    // ========= Crop button =========
+                    // ========= Crop button: Livewire call with pixel data =========
                     if (btn && !btn.dataset.bound) {
                         btn.dataset.bound = '1';
 
                         btn.addEventListener('click', () => {
                             if (!cropper || !component) return;
 
+                            // সিলেক্ট করা এরিয়ার pixel data সংগ্রহ
                             const data = cropper.getData(true);
 
                             component.call('saveCroppedImage', {
