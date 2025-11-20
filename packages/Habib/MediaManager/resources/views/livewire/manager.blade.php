@@ -774,7 +774,7 @@
                         <h3 class="text-sm font-semibold">Crop</h3>
                         <button type="button"
                                 wire:click="closeCropModal"
-                                class="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-lg leading-none">
+                                class="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-lg leading-none cursor-pointer">
                             &times;
                         </button>
                     </div>
@@ -792,6 +792,49 @@
 
                         {{-- Right: controls --}}
                         <div class="w-56 space-y-4 text-xs text-gray-700 dark:text-gray-200">
+                            {{-- Optimize / compress options --}}
+                            <div class="border-t border-gray-200 dark:border-slate-700 pt-3 mt-2 space-y-2">
+                                <label class="inline-flex items-center gap-2">
+                                    <input type="checkbox" wire:model="cropOptimize"
+                                           class="rounded border-gray-300 dark:border-slate-600">
+                                    <span>Optimize / compress</span>
+                                </label>
+
+                                <div class="flex gap-2">
+                                    <div class="flex-1">
+                                        <label class="block mb-1">Max width</label>
+                                        <input type="number" min="0"
+                                               wire:model="cropMaxWidth"
+                                               class="w-full border border-gray-300 dark:border-slate-600 rounded px-2 py-1 bg-white dark:bg-slate-900"
+                                               placeholder="auto">
+                                    </div>
+                                    <div class="flex-1">
+                                        <label class="block mb-1">Max height</label>
+                                        <input type="number" min="0"
+                                               wire:model="cropMaxHeight"
+                                               class="w-full border border-gray-300 dark:border-slate-600 rounded px-2 py-1 bg-white dark:bg-slate-900"
+                                               placeholder="auto">
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block mb-1">Quality (10–100)</label>
+                                    <input type="number" min="10" max="100"
+                                           wire:model="cropQuality"
+                                           class="w-full border border-gray-300 dark:border-slate-600 rounded px-2 py-1 bg-white dark:bg-slate-900">
+                                </div>
+
+                                <div>
+                                    <label class="block mb-1">Format</label>
+                                    <select wire:model="cropFormat"
+                                            class="w-full border border-gray-300 dark:border-slate-600 rounded px-2 py-1 bg-white dark:bg-slate-900">
+                                        <option value="keep">Keep original</option>
+                                        <option value="webp">Convert to WebP</option>
+                                        <option value="jpeg">Convert to JPEG</option>
+                                        <option value="png">Convert to PNG</option>
+                                    </select>
+                                </div>
+                            </div>
                             <div>
                                 <label for="cropper-height" class="block mb-1 font-semibold">Height</label>
                                 <input type="number"
@@ -814,7 +857,7 @@
                                     <span>Aspect ratio</span>
                                 </label>
                                 <p class="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-                                    Aspect ratio অন করলে current crop ratio lock থাকবে (Botble এর মত)।
+                                    Aspect ratio অন করলে current crop ratio lock থাকবে।
                                 </p>
                             </div>
                         </div>
@@ -824,7 +867,7 @@
                     <div class="px-4 py-3 border-t border-gray-200 dark:border-slate-700 flex justify-end gap-2">
                         <button type="button"
                                 wire:click="closeCropModal"
-                                class="px-3 py-1.5 text-xs border border-gray-200 dark:border-slate-700 rounded bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700">
+                                class="px-3 py-1.5 text-xs border border-gray-200 dark:border-slate-700 rounded bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 cursor-pointer">
                             Close
                         </button>
 

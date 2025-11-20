@@ -8,6 +8,9 @@ use Habib\MediaManager\Models\MediaTag;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Intervention\Image\Encoders\JpegEncoder;
+use Intervention\Image\Encoders\PngEncoder;
+use Intervention\Image\Encoders\WebpEncoder;
 use Intervention\Image\Laravel\Facades\Image as ImageManager;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -24,7 +27,7 @@ class MediaManager extends Component
         'media-insert' => 'handleMediaInsert',
     ];
     public $showMoveToTrashModal = false;
-    public $skipTrash = false;   // checkbox stateা
+    public $skipTrash = false;
 
     public $showEmptyTrashModal = false;
     public $showDeletePermanentModal = false;
@@ -93,6 +96,12 @@ class MediaManager extends Component
     public ?int $cropFileId = null;
     public bool $showPreview = false;
     public ?MediaFile $previewFile = null;
+
+    public bool $cropOptimize = true;
+    public ?int $cropMaxWidth = null;
+    public ?int $cropMaxHeight = null;
+    public int $cropQuality = 80;
+    public string $cropFormat = 'keep';
 
     public function mount()
     {
@@ -434,6 +443,13 @@ class MediaManager extends Component
         $this->cropFileId    = $fileId;
         $this->showCropModal = true;
 
+        // 🔥 crop অপশনগুলোর ডিফল্ট ভ্যালু
+        $this->cropOptimize  = true;
+        $this->cropQuality   = 80;
+        $this->cropMaxWidth  = null;
+        $this->cropMaxHeight = null;
+        $this->cropFormat    = 'keep';
+
         $this->closeContextMenu();
         $this->dispatch('init-cropper', id: $this->getId());
     }
@@ -442,6 +458,10 @@ class MediaManager extends Component
     {
         $this->showCropModal = false;
         $this->cropFileId = null;
+        $this->cropMaxWidth  = null;
+        $this->cropMaxHeight = null;
+        $this->cropQuality   = 80;
+        $this->cropFormat   = 'keep';
     }
 
     /**
@@ -478,13 +498,146 @@ class MediaManager extends Component
         // Intervention Image ব্যবহার করে ফাইল লোড
         $image = ImageManager::read($fullPath);
 
+        // ✅ সেফটি: crop area যেন ইমেজের বাইরে না যায়
+        $imgW = $image->width();
+        $imgH = $image->height();
+
+        if ($x < 0) {
+            $width += $x;
+            $x = 0;
+        }
+        if ($y < 0) {
+            $height += $y;
+            $y = 0;
+        }
+        if ($x + $width > $imgW) {
+            $width = $imgW - $x;
+        }
+        if ($y + $height > $imgH) {
+            $height = $imgH - $y;
+        }
+        if ($width <= 0 || $height <= 0) {
+            $this->toast('Invalid crop area.', 'error');
+            return;
+        }
         // মূল ক্রপিং অপারেশন: x, y, width, height অনুযায়ী ক্রপ
         $image->crop($width, $height, $x, $y);
 
-        // নতুন ক্রপ করা ইমেজটি ফাইল সিস্টেমে সেভ (ওভাররাইট)
-        $image->save($fullPath);
+        // ---------- OPTIONAL RESIZE + COMPRESS ----------
+        if ($this->cropOptimize) {
+            $quality = max(10, min(100, $this->cropQuality ?: 80));
 
-        // ডেটাবেস আপডেট
+            // 🔍 প্রয়োজনে রিসাইজ (max width/height অনুযায়ী)
+            $maxW = $this->cropMaxWidth ?: null;
+            $maxH = $this->cropMaxHeight ?: null;
+
+            if ($maxW || $maxH) {
+                $currW = $image->width();
+                $currH = $image->height();
+                $scale = 1.0;
+
+                if ($maxW && $currW > $maxW) {
+                    $scale = min($scale, $maxW / $currW);
+                }
+                if ($maxH && $currH > $maxH) {
+                    $scale = min($scale, $maxH / $currH);
+                }
+
+                if ($scale < 1) {
+                    $newW = (int) round($currW * $scale);
+                    $newH = (int) round($currH * $scale);
+                    $image->resize($newW, $newH);
+                }
+            }
+
+            $format = $this->cropFormat; // keep | webp | jpeg
+
+            if ($format === 'webp') {
+                // 👉 WebP তে কনভার্ট
+                $encoder = new WebpEncoder(quality: $quality);
+                $binary  = $image->encode($encoder);
+
+                $newPath = preg_replace('/\.\w+$/', '.webp', $path) ?: ($path . '.webp');
+
+                Storage::disk($disk)->put($newPath, (string) $binary);
+
+                if ($newPath !== $path && Storage::disk($disk)->exists($path)) {
+                    Storage::disk($disk)->delete($path);
+                }
+
+                $path     = $newPath;
+                $fullPath = Storage::disk($disk)->path($path);
+
+                $file->path      = $newPath;
+                $file->mime_type = 'image/webp';
+
+            } elseif ($format === 'jpeg') {
+                // 👉 JPEG তে কনভার্ট
+                $encoder = new JpegEncoder(quality: $quality);
+                $binary  = $image->encode($encoder);
+
+                $newPath = preg_replace('/\.\w+$/', '.jpg', $path) ?: ($path . '.jpg');
+
+                Storage::disk($disk)->put($newPath, (string) $binary);
+
+                if ($newPath !== $path && Storage::disk($disk)->exists($path)) {
+                    Storage::disk($disk)->delete($path);
+                }
+
+                $path     = $newPath;
+                $fullPath = Storage::disk($disk)->path($path);
+
+                $file->path      = $newPath;
+                $file->mime_type = 'image/jpeg';
+
+            } elseif ($format === 'png') {
+                // 👉 PNG তে কনভার্ট
+                // নোট: PNG সাধারণত lossless, তাই এখানে quality হিসেবে compression level ঠিক করছি না,
+                // শুধু PNG encoder দিয়ে encode করছি।
+                $encoder = new PngEncoder();
+                $binary  = $image->encode($encoder);
+
+                $newPath = preg_replace('/\.\w+$/', '.png', $path) ?: ($path . '.png');
+
+                Storage::disk($disk)->put($newPath, (string) $binary);
+
+                if ($newPath !== $path && Storage::disk($disk)->exists($path)) {
+                    Storage::disk($disk)->delete($path);
+                }
+
+                $path     = $newPath;
+                $fullPath = Storage::disk($disk)->path($path);
+
+                $file->path      = $newPath;
+                $file->mime_type = 'image/png';
+
+            } else {
+                // 👉 ফরম্যাট same রেখে শুধু compress
+                if (in_array($file->mime_type, ['image/jpeg', 'image/jpg'])) {
+                    $encoder = new JpegEncoder(quality: $quality);
+                    $binary  = $image->encode($encoder);
+                    Storage::disk($disk)->put($path, (string) $binary);
+                } elseif ($file->mime_type === 'image/webp') {
+                    $encoder = new WebpEncoder(quality: $quality);
+                    $binary  = $image->encode($encoder);
+                    Storage::disk($disk)->put($path, (string) $binary);
+                } elseif ($file->mime_type === 'image/png') {
+                    // PNG এর জন্য lossless re-encode
+                    $encoder = new PngEncoder();
+                    $binary  = $image->encode($encoder);
+                    Storage::disk($disk)->put($path, (string) $binary);
+                } else {
+                    // অন্য ফরম্যাট হলে normal save
+                    $image->save($fullPath);
+                }
+            }
+        } else {
+            // শুধু crop, কোনো extra optimize নেই
+            $image->save($fullPath);
+        }
+
+        // ---------- Database update ----------
+        clearstatcache();
         $file->size   = filesize($fullPath);
         $file->width  = $image->width();
         $file->height = $image->height();
@@ -493,8 +646,8 @@ class MediaManager extends Component
         $this->showCropModal = false;
         $this->cropFileId    = null;
         $this->resetPage();
-        $this->refreshState(); // ✅ Livewire স্টেট রিফ্রেশ
-        $this->toast('Image cropped successfully.', 'success');
+        $this->refreshState();
+        $this->toast('Image cropped & optimized successfully.', 'success');
     }
 
     public function openPreview(?int $id = null): void
