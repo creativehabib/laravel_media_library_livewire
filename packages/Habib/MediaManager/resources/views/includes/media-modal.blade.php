@@ -28,9 +28,9 @@
             <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Media gallery</h2>
 
             <button type="button"
-                    class="text-xl leading-none text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 cursor-pointer"
+                    class="inline-flex items-center gap-1 border border-gray-200 dark:border-slate-700 px-1.5 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-slate-800 cursor-pointer"
                     @click="open = false">
-                &times;
+                <i class="fa-solid fa-close"></i>
             </button>
         </div>
 
@@ -58,46 +58,7 @@
     </div>
 </div>
 
-<div
-    x-data="{
-        show: false,
-        message: '',
-        type: 'success',
-        timeoutId: null
-    }"
-    x-on:media-toast.window="
-        message  = $event.detail.message;
-        type     = $event.detail.type || 'success';
-        show     = true;
-
-        // আগের টাইমার ক্লিয়ার
-        if (timeoutId) clearTimeout(timeoutId);
-
-        timeoutId = setTimeout(() => show = false, 3000);
-    "
-    x-show="show"
-    x-transition
-    class="fixed bottom-4 right-4 z-[9999] max-w-xs px-4 py-3 rounded-md shadow-lg
-           text-sm"
-    :class="{
-        'bg-green-600 text-white': type === 'success',
-        'bg-yellow-500 text-white': type === 'warning',
-        'bg-red-600 text-white': type === 'error',
-        'bg-blue-600 text-white': type === 'info',
-    }"
->
-    <div class="flex items-start gap-2">
-        <span>
-            <template x-if="type === 'success'">✅</template>
-            <template x-if="type === 'warning'">⚠️</template>
-            <template x-if="type === 'error'">❌</template>
-            <template x-if="type === 'info'">ℹ️</template>
-        </span>
-        <p x-text="message"></p>
-    </div>
-</div>
-
-
+<x-mediamanager::media-toast position="top-right" timeout="6000" max="4" />
 <script>
     document.addEventListener('livewire:init', () => {
         // ১) ইনপুট / প্রিভিউ টার্গেট

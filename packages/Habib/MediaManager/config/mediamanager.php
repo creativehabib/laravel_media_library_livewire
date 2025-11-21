@@ -21,4 +21,13 @@ return [
 
     // প্রতি পেইজে ফাইল সংখ্যা
     'per_page' => 24,
+
+    /* ----------------------------
+   | Media Manager Toast Defaults
+   |-----------------------------*/
+    'toast' => [
+        'position' => 'bottom-right', // top-left, top-right, bottom-left, bottom-right
+        'timeout'  => 3000,           // milliseconds
+        'max'      => 4,              // queue length
+    ],
 ];

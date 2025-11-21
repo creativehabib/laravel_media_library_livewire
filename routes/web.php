@@ -11,7 +11,9 @@ Route::get('/', function () {
 Route::view('dashboard', 'dashboard')
     ->middleware(['auth', 'verified'])
     ->name('dashboard');
-
+Route::view('media', 'media')
+    ->middleware(['auth', 'verified'])
+    ->name('media');
 Route::middleware(['auth'])->group(function () {
     Route::redirect('settings', 'settings/profile');
 

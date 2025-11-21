@@ -171,6 +171,7 @@ class MediaManager extends Component
 
         $this->reset('uploads');
         $this->resetPage();
+        $this->toast('Upload successfully!', 'success');
     }
 
     /* ========= Upload from URL ========= */
@@ -254,6 +255,7 @@ class MediaManager extends Component
             $this->showUrlModal = false;
             $this->urlInput     = null;
             $this->resetPage();
+            $this->toast('Upload from url successfully!', 'success');
         } catch (\Throwable $e) {
             $this->addError('urlInput', 'Error while downloading: ' . $e->getMessage());
         }
@@ -1072,6 +1074,7 @@ class MediaManager extends Component
         $this->selectedId = null;
         $this->resetPage();
         $this->closeContextMenu();
+        $this->toast('File restored successfully.');
     }
 
     public $showRenameModal = false;
