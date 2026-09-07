@@ -39,6 +39,10 @@
                        x-ref="localUpload"
                        wire:model="uploads"
                        class="hidden">
+
+                @error('uploads.*')
+                    <div class="mt-1 text-xs text-red-500">{{ $message }}</div>
+                @enderror
             </div>
 
             <button type="button"
@@ -311,16 +315,22 @@
 
     {{-- SEARCH + BREADCRUMB --}}
     <div class="bg-white dark:bg-slate-900 rounded border border-gray-200 dark:border-slate-700 px-3 py-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-300">
+        <div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-300 flex-wrap">
             <i class="fa-solid fa-image"></i>
+
             <button type="button" wire:click="setFolder(null)"
                     class="hover:underline cursor-pointer {{ $folder_id ? '' : 'font-semibold text-gray-800 dark:text-gray-100' }}">
                 All media
             </button>
-            @if($folder_id)
+
+            @foreach($breadcrumbs as $crumb)
                 <span>/</span>
-                <span>folder #{{ $folder_id }}</span>
-            @endif
+                <button type="button"
+                        wire:click="setFolder({{ $crumb->id }})"
+                        class="hover:underline cursor-pointer {{ $loop->last ? 'font-semibold text-gray-800 dark:text-gray-100' : '' }}">
+                    {{ $crumb->name }}
+                </button>
+            @endforeach
         </div>
 
         <div class="flex items-center gap-2 w-full sm:w-auto">
@@ -358,17 +368,42 @@
             @else
                 {{-- 🔽 NORMAL LIST (FOLDERS + FILES) --}}
 
-                @if($folders->count())
+                @if($folders->count() || $currentFolder)
                     <div class="mb-3">
                         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-                            @foreach($folders as $f)
+                            @if($currentFolder)
                                 <button type="button"
-                                        wire:click="setFolder({{ $f->id }})"
-                                        class="border border-gray-200 dark:border-slate-700 rounded bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700 px-2 py-3 flex flex-col items-center justify-center text-[11px]
-                                               {{ $folder_id == $f->id ? 'ring-2 ring-blue-400' : '' }}">
-                                    <span class="text-xl mb-1">📁</span>
-                                    <span class="truncate w-full text-center">{{ $f->name }}</span>
+                                        wire:click="goToParentFolder"
+                                        class="border border-gray-200 dark:border-slate-700 rounded bg-white dark:bg-slate-900 px-2 py-2 text-[11px] hover:bg-gray-100 dark:hover:bg-slate-700 cursor-pointer flex flex-col items-center justify-center">
+                                    <span class="text-xl leading-none mb-1">↩</span>
+                                    <span class="truncate w-full text-center">Back</span>
                                 </button>
+                            @endif
+
+                            @foreach($folders as $f)
+                                <div class="group border border-gray-200 dark:border-slate-700 rounded bg-gray-50 dark:bg-slate-800 px-2 py-2 text-[11px] {{ $folder_id == $f->id ? 'ring-2 ring-blue-400' : '' }}">
+                                    <button type="button"
+                                            wire:click="setFolder({{ $f->id }})"
+                                            class="w-full flex flex-col items-center justify-center hover:bg-gray-100 dark:hover:bg-slate-700 rounded py-1 cursor-pointer">
+                                        <span class="text-xl mb-1">📁</span>
+                                        <span class="truncate w-full text-center">{{ $f->name }}</span>
+                                    </button>
+
+                                    <div class="mt-2 flex items-center justify-center gap-1 opacity-0 pointer-events-none transition-opacity duration-150 group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto">
+                                        <button type="button"
+                                                wire:click="openEditFolderModal({{ $f->id }})"
+                                                class="px-2 py-1 rounded border border-gray-200 dark:border-slate-600 hover:bg-white dark:hover:bg-slate-700 cursor-pointer"
+                                                title="Edit folder">
+                                            <i class="fa-regular fa-pen-to-square"></i>
+                                        </button>
+                                        <button type="button"
+                                                wire:click="openDeleteFolderModal({{ $f->id }})"
+                                                class="px-2 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-700 dark:hover:bg-red-900/30 cursor-pointer"
+                                                title="Delete folder">
+                                            <i class="fa-regular fa-trash-can"></i>
+                                        </button>
+                                    </div>
+                                </div>
                             @endforeach
                         </div>
                     </div>
@@ -606,44 +641,74 @@
         <div class="fixed inset-0 z-40 flex items-center justify-center bg-black/40"
              wire:click.self="closeUrlModal">
 
-            <div class="bg-white dark:bg-slate-900 rounded shadow-lg w-full max-w-md p-4 border border-gray-200 dark:border-slate-700">
+            <div class="bg-white dark:bg-slate-900 rounded shadow-lg w-full max-w-md border border-gray-200 dark:border-slate-700">
 
-                <h3 class="text-sm font-semibold mb-3">Upload from URL</h3>
-
-                <div class="mb-3">
-                    <label class="block text-xs text-gray-600 dark:text-gray-300 mb-1">File URL</label>
-                    <input type="text"
-                           wire:model.defer="urlInput"
-                           class="w-full border border-gray-300 dark:border-slate-600 rounded px-3 py-2 text-xs bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-slate-500"
-                           placeholder="https://example.com/image.jpg" autofocus>
-
-                    @error('urlInput')
-                    <div class="text-red-500 text-[11px] mt-1">{{ $message }}</div>
-                    @enderror
-                </div>
-
-                <div class="flex justify-end gap-2 mt-2">
+                {{-- Header --}}
+                <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-slate-700">
+                    <h3 class="text-sm font-semibold">Add from URL</h3>
                     <button type="button"
                             wire:click="closeUrlModal"
-                            class="px-3 py-1.5 text-xs border border-gray-200 dark:border-slate-700 rounded cursor-pointer bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700">
+                            class="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-lg leading-none">
+                        &times;
+                    </button>
+                </div>
+
+                {{-- Body --}}
+                <div class="px-4 py-4 space-y-4">
+                    <div>
+                        <label class="block text-xs text-gray-600 dark:text-gray-300 mb-1">
+                            URL <span class="text-red-500">*</span>
+                        </label>
+
+                        <input type="text"
+                               wire:model.defer="urlInput"
+                               class="w-full border border-gray-300 dark:border-slate-600 rounded px-3 py-2 text-xs bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-slate-500"
+                               placeholder="https://example.com/image.jpg" autofocus>
+
+                        @error('urlInput')
+                        <div class="text-red-500 text-[11px] mt-1">{{ $message }}</div>
+                        @enderror
+                    </div>
+
+                    {{-- Download to local storage অপশন (UI only, চাইলে পরে logic ব্যবহার করবে) --}}
+                    <div class="flex items-start gap-2 text-xs">
+                        <input type="checkbox"
+                               checked
+                               class="mt-0.5 h-3 w-3 rounded border-gray-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500">
+                        <div>
+                            <p class="font-medium text-gray-700 dark:text-gray-200">
+                                Download image to local storage
+                            </p>
+                            <p class="text-[11px] text-gray-500 dark:text-gray-400">
+                                If it is unchecked, the image will be displayed from the original URL.
+                                {{-- আপাতত শুধু টেক্সট; future এ এখানে Livewire property bind করতে পারো --}}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                {{-- Footer --}}
+                <div class="px-4 py-3 border-t border-gray-200 dark:border-slate-700 flex justify-end gap-2">
+                    <button type="button"
+                            wire:click="closeUrlModal"
+                            class="px-3 py-1.5 text-xs border cursor-pointer border-gray-200 dark:border-slate-700 rounded bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700">
                         Cancel
                     </button>
 
-                    {{-- 🔥 Upload button with spinner --}}
+                    {{-- Botble-style: Save বাটন --}}
                     <button type="button"
                             wire:click="uploadFromUrl"
                             wire:target="uploadFromUrl"
                             wire:loading.attr="disabled"
-                            class="px-3 py-1.5 text-xs rounded bg-blue-600 text-white cursor-pointer flex items-center gap-1">
-
-                        <span wire:loading.remove wire:target="uploadFromUrl">
-                            Upload
-                        </span>
+                            class="px-4 py-1.5 text-xs rounded bg-blue-600 text-white cursor-pointer flex items-center gap-1 cursor-pointer">
+                    <span wire:loading.remove wire:target="uploadFromUrl">
+                        Save
+                    </span>
 
                         <span wire:loading.flex wire:target="uploadFromUrl" class="items-center gap-1">
-                            <i class="fa-solid fa-circle-notch animate-spin"></i>
-                            Uploading...
-                        </span>
+                        <i class="fa-solid fa-circle-notch animate-spin"></i>
+                        <span>Saving...</span>
+                    </span>
                     </button>
                 </div>
             </div>
@@ -654,7 +719,7 @@
     @if($showAltModal)
         @php
             $current = $selectedId ? $files->firstWhere('id', $selectedId) : null;
-            $ext = $current ? strtoupper(pathinfo($current->name, PATHINFO_EXTENSION) ?: 'FILE') : '';
+            $ext = $current ? $current->mime_type : '';
         @endphp
 
         <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
@@ -1212,6 +1277,52 @@
     @endif
 
 
+    {{-- ========== EDIT FOLDER MODAL ========== --}}
+    @if($showEditFolderModal)
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+             wire:click.self="closeEditFolderModal">
+            <div class="bg-white dark:bg-slate-900 rounded shadow-lg w-full max-w-sm border border-gray-200 dark:border-slate-700">
+                <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-slate-700">
+                    <h3 class="text-sm font-semibold">Edit folder</h3>
+                    <button type="button" wire:click="closeEditFolderModal" class="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-lg leading-none cursor-pointer">&times;</button>
+                </div>
+                <div class="p-4 space-y-3">
+                    <label class="block text-xs text-gray-600 dark:text-gray-300 mb-1">Folder name</label>
+                    <input type="text"
+                           wire:model.defer="editFolderName"
+                           class="w-full border border-gray-300 dark:border-slate-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100"
+                           placeholder="Enter folder name">
+                    @error('editFolderName')
+                    <div class="text-red-500 text-[11px] mt-1">{{ $message }}</div>
+                    @enderror
+                </div>
+                <div class="px-4 py-3 border-t border-gray-200 dark:border-slate-700 flex justify-end gap-2">
+                    <button type="button" wire:click="closeEditFolderModal" class="px-3 py-1.5 text-xs border border-gray-200 dark:border-slate-700 rounded cursor-pointer bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700">Cancel</button>
+                    <button type="button" wire:click="saveFolderEdit" class="px-3 py-1.5 text-xs rounded bg-blue-600 text-white cursor-pointer">Save</button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- ========== DELETE FOLDER MODAL ========== --}}
+    @if($showDeleteFolderModal)
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+             wire:click.self="closeDeleteFolderModal">
+            <div class="bg-white dark:bg-slate-900 rounded shadow-lg w-full max-w-sm border border-gray-200 dark:border-slate-700">
+                <div class="px-4 py-3 border-b border-gray-200 dark:border-slate-700">
+                    <h3 class="text-sm font-semibold">Delete folder</h3>
+                </div>
+                <div class="p-4 text-xs text-gray-600 dark:text-gray-300">
+                    Are you sure you want to delete this folder? Files in this folder will be moved to root.
+                </div>
+                <div class="px-4 py-3 border-t border-gray-200 dark:border-slate-700 flex justify-end gap-2">
+                    <button type="button" wire:click="closeDeleteFolderModal" class="px-3 py-1.5 text-xs border border-gray-200 dark:border-slate-700 rounded cursor-pointer bg-gray-50 dark:bg-slate-800 hover:bg-gray-100 dark:hover:bg-slate-700">Cancel</button>
+                    <button type="button" wire:click="confirmDeleteFolder" class="px-3 py-1.5 text-xs rounded bg-red-600 text-white cursor-pointer">Delete</button>
+                </div>
+            </div>
+        </div>
+    @endif
+
     {{-- ========== CREATE FOLDER MODAL ========== --}}
     @if($showFolderModal)
         <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
@@ -1266,200 +1377,3 @@
         </div>
     </div>
 </div>
-
-<script>
-    if (!window.__mediaCopyListenerAdded) {
-        window.__mediaCopyListenerAdded = true;
-
-        document.addEventListener('livewire:init', () => {
-            Livewire.on('media-copy-link', (payload) => {
-                const url = payload?.url || (Array.isArray(payload) ? payload[0]?.url : null);
-                if (!url) return;
-
-                const copyFallback = (text) => {
-                    const temp = document.createElement('input');
-                    temp.value = text;
-                    document.body.appendChild(temp);
-                    temp.select();
-                    document.execCommand('copy');
-                    document.body.removeChild(temp);
-                };
-
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    navigator.clipboard.writeText(url).catch(() => copyFallback(url));
-                } else {
-                    copyFallback(url);
-                }
-
-                // চাইলে এখানে তোমার নিজের toast system কল করতে পারো
-                // উদাহরণ: window.dispatchEvent(new CustomEvent('media-toast', {...}))
-                console.log('Media link copied:', url);
-            });
-
-            // ⬇️ Download
-            Livewire.on('media-download', (payload) => {
-                const url = payload?.url || (Array.isArray(payload) ? payload[0]?.url : null);
-                if (!url) return;
-
-                // নতুন ট্যাবে / same tab-এ ওপেন করতে পারো
-                const a = document.createElement('a');
-                a.href = url;
-                a.target = '_blank';   // চাইলে '_self' করে দিতে পারো
-                a.download = '';       // ব্রাউজারকে hint দেয় "download" করার জন্য
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-            });
-
-            // ========= CROP SYSTEM (SENSITIVE PART) =========
-            let cropper = null;
-
-            Livewire.on('init-cropper', (payload) => {
-                const component = Livewire.find(payload.id);
-
-                setTimeout(() => {
-                    const img    = document.getElementById('cropper-image');
-                    const hInput = document.getElementById('cropper-height');
-                    const wInput = document.getElementById('cropper-width');
-                    const aspect = document.getElementById('cropper-aspect');
-                    const btn    = document.getElementById('cropper-apply-btn');
-
-                    if (!img || typeof Cropper === 'undefined') {
-                        console.error('CropperJS or image not found');
-                        return;
-                    }
-
-                    if (cropper) {
-                        cropper.destroy();
-                        cropper = null;
-                    }
-
-                    // Aspect ratio-কে ডিফল্টভাবে আনচেক নিশ্চিত করি (Fix for Free Cropping)
-                    if (aspect) {
-                        aspect.checked = false;
-                    }
-
-
-                    cropper = new Cropper(img, {
-                        viewMode: 1,
-                        dragMode: 'move',
-                        autoCropArea: 0.8,
-                        responsive: true,
-                        background: false,
-                        aspectRatio: NaN, // নিশ্চিত করি যে ডিফল্ট মোড free-form
-
-                        ready() {
-                            const data = cropper.getData(true);
-                            if (hInput) hInput.value = Math.round(data.height || 0);
-                            if (wInput) wInput.value = Math.round(data.width || 0);
-
-                            // initial free crop mode যদি চেক না থাকে
-                            if(aspect && !aspect.checked) {
-                                cropper.setAspectRatio(NaN);
-                            }
-                        },
-
-                        crop() {
-                            const data = cropper.getData(true);
-                            // যদি ইনপুট ফিল্ড active না থাকে, তবে cropper এর মান দেখাও
-                            if (hInput && document.activeElement !== hInput) {
-                                hInput.value = Math.round(data.height || 0);
-                            }
-                            if (wInput && document.activeElement !== wInput) {
-                                wInput.value = Math.round(data.width || 0);
-                            }
-                        },
-                    });
-
-                    // ========= Aspect ratio toggle (Fixed Logic) =========
-                    if (aspect && !aspect.dataset.bound) {
-                        aspect.dataset.bound = '1';
-                        aspect.addEventListener('change', () => {
-                            if (!cropper) return;
-
-                            if (aspect.checked) {
-                                const data  = cropper.getData(true);
-                                const ratio = data.width && data.height
-                                    ? data.width / data.height
-                                    : NaN;
-
-                                if (ratio && !isNaN(ratio)) {
-                                    cropper.setAspectRatio(ratio);
-                                } else {
-                                    // Fallback: যদি কোনো এরিয়া সিলেক্ট করা না থাকে, তবে 16:9 ডিফল্ট
-                                    cropper.setAspectRatio(16 / 9);
-                                }
-
-                            } else {
-                                // Free Mode
-                                cropper.setAspectRatio(NaN);
-                            }
-                        });
-                    }
-
-                    // ========= Height/width ইনপুট থেকে crop আপডেট (Fixed Logic) =========
-                    const bindSizeInput = (input, dimension) => {
-                        if (!input || input.dataset.bound) return;
-
-                        input.dataset.bound = '1';
-
-                        input.addEventListener('input', () => {
-                            if (!cropper) return;
-
-                            const val = parseInt(input.value || '0', 10);
-                            if (!val || val <= 0) return;
-
-                            const data = cropper.getData(true);
-                            const currentRatio = data.width / data.height;
-
-                            let newData = { x: data.x, y: data.y, width: data.width, height: data.height };
-
-                            if (dimension === 'height') {
-                                newData.height = val;
-
-                                if (aspect && aspect.checked && !isNaN(currentRatio)) {
-                                    // Aspect Ratio Lock থাকলে width-কেও আপডেট করি
-                                    newData.width = Math.round(val * currentRatio);
-                                    if (wInput) wInput.value = newData.width;
-                                }
-                            } else { // dimension === 'width'
-                                newData.width = val;
-
-                                if (aspect && aspect.checked && !isNaN(currentRatio)) {
-                                    // Aspect Ratio Lock থাকলে height-কেও আপডেট করি
-                                    newData.height = Math.round(val / currentRatio);
-                                    if (hInput) hInput.value = newData.height;
-                                }
-                            }
-
-                            // নতুন ডাটা দিয়ে ক্রপার আপডেট
-                            cropper.setData(newData);
-                        });
-                    };
-
-                    bindSizeInput(hInput, 'height');
-                    bindSizeInput(wInput, 'width');
-
-                    // ========= Crop button: Livewire call with pixel data =========
-                    if (btn && !btn.dataset.bound) {
-                        btn.dataset.bound = '1';
-
-                        btn.addEventListener('click', () => {
-                            if (!cropper || !component) return;
-
-                            // সিলেক্ট করা এরিয়ার pixel data সংগ্রহ
-                            const data = cropper.getData(true);
-
-                            component.call('saveCroppedImage', {
-                                x: Math.round(data.x),
-                                y: Math.round(data.y),
-                                width: Math.round(data.width),
-                                height: Math.round(data.height),
-                            });
-                        });
-                    }
-                }, 50);
-            });
-        });
-    }
-</script>

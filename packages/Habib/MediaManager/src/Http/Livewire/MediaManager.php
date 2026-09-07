@@ -8,6 +8,7 @@ use Habib\MediaManager\Models\MediaTag;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Intervention\Image\Encoders\JpegEncoder;
 use Intervention\Image\Encoders\PngEncoder;
 use Intervention\Image\Encoders\WebpEncoder;
@@ -25,6 +26,7 @@ class MediaManager extends Component
         'media-manager-opened' => 'onOpened',
         'media-manager-insert' => 'onInsert',
         'media-insert' => 'handleMediaInsert',
+        'download-from-url' => 'handleDownloadFromUrlForField',
     ];
     public $showMoveToTrashModal = false;
     public $skipTrash = false;
@@ -78,6 +80,11 @@ class MediaManager extends Component
 
     public $showFolderModal = false;
     public $newFolderName   = '';
+    public bool $showEditFolderModal = false;
+    public ?int $editingFolderId = null;
+    public string $editFolderName = '';
+    public bool $showDeleteFolderModal = false;
+    public ?int $deletingFolderId = null;
     protected $queryString = [
         'q',
         'mime',
@@ -122,13 +129,29 @@ class MediaManager extends Component
             return;
         }
 
-        $this->validate([
-            'uploads.*' => 'required|file|max:20480',
-        ]);
+        try {
+            $this->validate([
+                'uploads.*' => 'required|file|max:20480',
+            ], [
+                'uploads.*.required' => 'Please select a file to upload.',
+                'uploads.*.file' => 'Only valid files can be uploaded.',
+                'uploads.*.max' => 'The file size must be 20MB or less.',
+            ]);
+        } catch (ValidationException $exception) {
+            $message = $exception->validator->errors()->first('uploads.*')
+                ?: 'Upload failed.';
+            $this->toast($message, 'error');
+            throw $exception;
+        }
+
+        $successCount = 0; // সফল আপলোড ট্র্যাক করার ভেরিয়েবল
 
         foreach ($this->uploads as $file) {
-            $path = $file->store(
-                'media/' . now()->format('Y/m/d'),
+            $originalName = $this->normalizeFileName($file->getClientOriginalName());
+            $directory = 'media/' . now()->format('Y/m/d');
+            $path = $file->storeAs(
+                $directory,
+                $this->resolveUniqueFileName($this->selectedDisk, $directory, $originalName),
                 $this->selectedDisk
             );
 
@@ -139,13 +162,20 @@ class MediaManager extends Component
 
             // if image then calculate dimension
             if(Str::startsWith($mime, 'image/')) {
-                $image = ImageManager::read($file->getRealPath());
-                $width = $image->width();
-                $height = $image->height();
+                try {
+                    $image = ImageManager::decode($file->getRealPath());
+                    $width = $image->width();
+                    $height = $image->height();
+                } catch (\Exception $e) {
+                    Storage::disk($this->selectedDisk)->delete($path);
+                    $this->toast("{$originalName} is an unsupported image format.", 'error');
+                    continue; // ফেইল করলে লুপ স্কিপ করবে
+                }
             }
 
             $media = MediaFile::create([
-                'name'       => $file->getClientOriginalName(),
+                'name'       => $originalName,
+                'alt'        => $originalName,
                 'folder_id'  => $this->folder_id,
                 'disk'       => $this->selectedDisk,
                 'path'       => $path,
@@ -167,11 +197,14 @@ class MediaManager extends Component
 
             // প্রিভিউতে দেখানোর জন্য
             $this->selectedId = $media->id;
+            $successCount++;
         }
 
         $this->reset('uploads');
         $this->resetPage();
-        $this->toast('Upload successfully!', 'success');
+        if ($successCount > 0) {
+            $this->toast('Upload successfully!', type: 'success');
+        }
     }
 
     /* ========= Upload from URL ========= */
@@ -208,11 +241,11 @@ class MediaManager extends Component
             }
 
             // ফাইল নাম বের করি
-            $parsed = parse_url($url);
-            $path   = $parsed['path'] ?? 'file';
-            $name   = basename($path) ?: 'file-' . time();
+            $name = $this->normalizeFileName($this->resolveUrlFileName($url));
 
-            $storePath = 'media/' . now()->format('Y/m/d') . '/' . uniqid() . '-' . $name;
+            $directory = 'media/' . now()->format('Y/m/d');
+            $fileName = $this->resolveUniqueFileName($this->selectedDisk, $directory, $name);
+            $storePath = $directory . '/' . $fileName;
 
             Storage::disk($this->selectedDisk)->put($storePath, $contents);
 
@@ -224,14 +257,21 @@ class MediaManager extends Component
 
 
             if(Str::startsWith($mime, 'image/')) {
-                $fullPath = Storage::disk($this->selectedDisk)->path($storePath);
-                $image = ImageManager::read($fullPath);
-                $width = $image->width();
-                $height = $image->height();
+                try {
+                    $fullPath = Storage::disk($this->selectedDisk)->path($storePath);
+                    $image = ImageManager::decode($fullPath);
+                    $width = $image->width();
+                    $height = $image->height();
+                } catch (\Exception $e) {
+                    Storage::disk($this->selectedDisk)->delete($storePath);
+                    $this->toast('The URL contains an unsupported image format.', 'error');
+                    return;
+                }
             }
 
             $media = MediaFile::create([
                 'name'       => $name,
+                'alt'        => $name,
                 'folder_id'  => $this->folder_id,
                 'disk'       => $this->selectedDisk,
                 'path'       => $storePath,
@@ -260,6 +300,150 @@ class MediaManager extends Component
             $this->addError('urlInput', 'Error while downloading: ' . $e->getMessage());
         }
     }
+
+
+
+
+    protected function normalizeFileName(string $fileName): string
+    {
+        $extension = pathinfo($fileName, PATHINFO_EXTENSION);
+        $baseName = pathinfo($fileName, PATHINFO_FILENAME);
+
+        $normalizedBaseName = (string) Str::of($baseName)
+            ->replaceMatches('/\s+/', '-')
+            ->trim('-');
+
+        if ($normalizedBaseName === '') {
+            $normalizedBaseName = 'file-' . time();
+        }
+
+        return $normalizedBaseName . ($extension ? ".{$extension}" : '');
+    }
+
+    protected function resolveUrlFileName(string $url): string
+    {
+        $parsedPath = parse_url($url, PHP_URL_PATH);
+
+        if (! is_string($parsedPath) || $parsedPath === '') {
+            return 'file-' . time();
+        }
+
+        $name = trim(rawurldecode(pathinfo($parsedPath, PATHINFO_BASENAME)));
+
+        return $name !== '' ? $name : 'file-' . time();
+    }
+
+    protected function resolveUniqueFileName(string $disk, string $directory, string $originalName): string
+    {
+        $extension = pathinfo($originalName, PATHINFO_EXTENSION);
+        $baseName = pathinfo($originalName, PATHINFO_FILENAME);
+
+        $candidate = $originalName;
+        $counter = 1;
+
+        while (Storage::disk($disk)->exists("{$directory}/{$candidate}")) {
+            $suffix = '-' . $counter;
+            $candidate = $baseName . $suffix . ($extension ? ".{$extension}" : '');
+            $counter++;
+        }
+
+        return $candidate;
+    }
+
+    protected function downloadUrlToMedia(string $url): ?MediaFile
+    {
+        try {
+            $contents = @file_get_contents($url);
+
+            if ($contents === false) {
+                return null;
+            }
+
+            $name = $this->normalizeFileName($this->resolveUrlFileName($url));
+
+            $directory = 'media/' . now()->format('Y/m/d');
+            $fileName = $this->resolveUniqueFileName($this->selectedDisk, $directory, $name);
+            $storePath = $directory . '/' . $fileName;
+
+            Storage::disk($this->selectedDisk)->put($storePath, $contents);
+
+            $size  = strlen($contents);
+            $finfo = new \finfo(FILEINFO_MIME_TYPE);
+            $mime  = $finfo->buffer($contents) ?: 'application/octet-stream';
+
+            $width  = null;
+            $height = null;
+
+            if (Str::startsWith($mime, 'image/')) {
+                try {
+                    $fullPath = Storage::disk($this->selectedDisk)->path($storePath);
+                    $image    = ImageManager::decode($fullPath);
+                    $width    = $image->width();
+                    $height   = $image->height();
+                } catch (\Exception $e) {
+                    Storage::disk($this->selectedDisk)->delete($storePath);
+                    return null;
+                }
+            }
+
+            $media = MediaFile::create([
+                'name'       => $name,
+                'alt'        => $name,
+                'folder_id'  => $this->folder_id,
+                'disk'       => $this->selectedDisk,
+                'path'       => $storePath,
+                'mime_type'  => $mime,
+                'size'       => $size,
+                'visibility' => $this->visibility ?: 'public',
+                'width'      => $width,
+                'height'     => $height,
+            ]);
+
+            if ($this->tagsInput) {
+                $tagIds = collect(explode(',', $this->tagsInput))
+                    ->map(fn ($t) => trim($t))
+                    ->filter()
+                    ->map(fn ($t) => MediaTag::firstOrCreate(['name' => $t])->id);
+
+                $media->tags()->sync($tagIds);
+            }
+
+            return $media;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    public function handleDownloadFromUrlForField($url, $fieldId = null)
+    {
+        if (! $url) {
+            return;
+        }
+
+        // ---- URL থেকে ডাউনলোড করে MediaFile তৈরি ----
+        $media = $this->downloadUrlToMedia($url);
+
+        if (! $media) {
+            $this->toast('Failed to download image!', 'error');
+            return;
+        }
+
+        // Internal state
+        $this->selectedId = $media->id;
+
+        // JS-কে জানাই যে কাজ শেষ
+        $this->dispatch(
+            'media-url-downloaded',
+            fieldId: $fieldId,
+            id:      $media->id,
+            url:     $media->url,
+            name:    $media->name,
+            mime:    $media->mime_type,
+        );
+
+        $this->toast('Upload from URL successfully!', 'success');
+    }
+
 
     public function loadMore()
     {
@@ -351,8 +535,8 @@ class MediaManager extends Component
 
         $this->selectedId = $copy->id;
         $this->resetPage();
-        $this->toast('File duplicate successfully.');
-        $this->refreshState(); // ✅
+        $this->toast('File duplicate successfully.', 'success');
+        $this->refreshState();
     }
 
     /**
@@ -367,7 +551,7 @@ class MediaManager extends Component
         $this->skipTrash = false;
         $this->showMoveToTrashModal = true;
 
-        $this->closeContextMenu(); // ✅
+        $this->closeContextMenu();
     }
 
     public function closeMoveToTrashModal()
@@ -387,10 +571,10 @@ class MediaManager extends Component
 
         if($this->skipTrash) {
             $this->deleteMedia($file->id);
-            $this->toast('File permanently deleted.');
+            $this->toast('File permanently deleted.', 'success');
         } else {
             $file->delete();
-            $this->toast('File moved to trash successfully.');
+            $this->toast('File moved to trash successfully.', 'success');
         }
         $this->selectedId = null;
         $this->resetPage();
@@ -497,8 +681,13 @@ class MediaManager extends Component
         $path     = $file->path;
         $fullPath = Storage::disk($disk)->path($path);
 
-        // Intervention Image ব্যবহার করে ফাইল লোড
-        $image = ImageManager::read($fullPath);
+        try {
+            $image = ImageManager::decode($fullPath);
+        } catch (\Exception $e) {
+            $this->toast('Cannot crop this image. Unsupported format or corrupted file.', 'error');
+            return;
+        }
+
 
         // ✅ সেফটি: crop area যেন ইমেজের বাইরে না যায়
         $imgW = $image->width();
@@ -720,7 +909,7 @@ class MediaManager extends Component
         $file->alt = $this->altTextInput;
         $file->save();
 
-        $this->toast('File alt text saved successfully.');
+        $this->toast('File alt text saved successfully.', 'success');
 
         $this->showAltModal = false;
         $this->refreshState(); // ✅
@@ -741,7 +930,7 @@ class MediaManager extends Component
 
         $this->dispatch('media-copy-link', url: $file->url);
 
-        $this->toast('File link copy successfully.');
+        $this->toast('File link copy successfully.', 'success');
         $this->closeContextMenu(); // ✅
     }
 
@@ -761,7 +950,7 @@ class MediaManager extends Component
             : $file->url;
 
         $this->dispatch('media-copy-link', url: $indirect);
-        $this->toast('File indirect link copy successfully.');
+        $this->toast('File indirect link copy successfully.', 'success');
 
         $this->closeContextMenu(); // ✅
     }
@@ -800,6 +989,18 @@ class MediaManager extends Component
     public function setFolder(?int $folderId)
     {
         $this->folder_id = $folderId;
+        $this->resetPage();
+    }
+
+    public function goToParentFolder(): void
+    {
+        if (! $this->folder_id) {
+            return;
+        }
+
+        $currentFolder = MediaFolder::find($this->folder_id);
+
+        $this->folder_id = $currentFolder?->parent_id;
         $this->resetPage();
     }
 
@@ -892,6 +1093,94 @@ class MediaManager extends Component
 
         // ফোল্ডার লিস্ট রিফ্রেশের জন্য শুধু পেজ রি-রেন্ডার
         $this->resetPage();
+        $this->toast('Folder created successfully.', 'success');
+    }
+
+    public function openEditFolderModal(int $folderId)
+    {
+        $folder = MediaFolder::find($folderId);
+        if (! $folder) {
+            return;
+        }
+
+        $this->editingFolderId = $folder->id;
+        $this->editFolderName = $folder->name;
+        $this->showEditFolderModal = true;
+        $this->resetErrorBag('editFolderName');
+    }
+
+    public function closeEditFolderModal()
+    {
+        $this->showEditFolderModal = false;
+        $this->editingFolderId = null;
+        $this->editFolderName = '';
+    }
+
+    public function saveFolderEdit()
+    {
+        $this->validate([
+            'editFolderName' => 'required|string|max:191',
+        ], [
+            'editFolderName.required' => 'Folder name is required.',
+        ]);
+
+        if (! $this->editingFolderId) {
+            return;
+        }
+
+        $folder = MediaFolder::find($this->editingFolderId);
+        if (! $folder) {
+            return;
+        }
+
+        $folder->name = $this->editFolderName;
+        $folder->save();
+
+        $this->closeEditFolderModal();
+        $this->toast('Folder renamed successfully.', 'success');
+    }
+
+    public function openDeleteFolderModal(int $folderId)
+    {
+        $folder = MediaFolder::find($folderId);
+        if (! $folder) {
+            return;
+        }
+
+        $this->deletingFolderId = $folder->id;
+        $this->showDeleteFolderModal = true;
+    }
+
+    public function closeDeleteFolderModal()
+    {
+        $this->showDeleteFolderModal = false;
+        $this->deletingFolderId = null;
+    }
+
+    public function confirmDeleteFolder()
+    {
+        if (! $this->deletingFolderId) {
+            return;
+        }
+
+        $folder = MediaFolder::find($this->deletingFolderId);
+        if (! $folder) {
+            $this->closeDeleteFolderModal();
+            return;
+        }
+
+        MediaFile::where('folder_id', $folder->id)->update(['folder_id' => null]);
+        MediaFolder::where('parent_id', $folder->id)->update(['parent_id' => null]);
+
+        if ($this->folder_id === $folder->id) {
+            $this->folder_id = null;
+        }
+
+        $folder->delete();
+
+        $this->closeDeleteFolderModal();
+        $this->toast('Folder deleted successfully.', 'success');
+        $this->resetPage();
     }
 
     /* ========== insert (VERY IMPORTANT) ========== */
@@ -971,7 +1260,7 @@ class MediaManager extends Component
         $this->selectedId = null;
         $this->resetPage();
         $this->resetPerPage();
-        $this->toast('Trash has been cleared.');
+        $this->toast('Trash has been cleared.', "success");
     }
 
     // বাটন থেকে মডাল ওপেন
@@ -997,7 +1286,7 @@ class MediaManager extends Component
 
         $this->showEmptyTrashModal = false;
 
-        $this->toast('Trash emptied successfully.');
+        $this->toast('Trash emptied successfully.', 'success');
     }
 
     public function openDeletePermanentModal(?int $id = null)
@@ -1039,7 +1328,7 @@ class MediaManager extends Component
         $this->resetPage();
         $this->resetPerPage();
 
-        $this->toast('File permanently deleted.');
+        $this->toast('File permanently deleted.', 'success');
     }
 
     /* ========= Right-click context menu ========= */
@@ -1074,7 +1363,7 @@ class MediaManager extends Component
         $this->selectedId = null;
         $this->resetPage();
         $this->closeContextMenu();
-        $this->toast('File restored successfully.');
+        $this->toast('File restored successfully.', 'success');
     }
 
     public $showRenameModal = false;
@@ -1114,7 +1403,7 @@ class MediaManager extends Component
         $file->save();
 
         $this->showRenameModal = false;
-        $this->toast('File successfully renamed.');
+        $this->toast('File successfully renamed.', "success");
         $this->refreshState(); // ✅
     }
 
@@ -1223,13 +1512,45 @@ class MediaManager extends Component
                 break;
         }
 
-        $files   = $query->paginate($this->perPage ?? config('mediamanager.media.perPage', 24));
-        $folders = MediaFolder::with('children')->whereNull('parent_id')->get();
+        $files = $query->paginate($this->perPage ?? config('mediamanager.media.perPage', 24));
+
+        $currentFolder = $this->folder_id
+            ? MediaFolder::find($this->folder_id)
+            : null;
+
+        if ($this->folder_id && ! $currentFolder) {
+            $this->folder_id = null;
+        }
+
+        $activeFolderId = $currentFolder?->id;
+
+        $folders = MediaFolder::query()
+            ->when($activeFolderId, function ($q, $id) {
+                $q->where('parent_id', $id);
+            }, function ($q) {
+                $q->whereNull('parent_id');
+            })
+            ->orderBy('name')
+            ->get();
+
+        $breadcrumbs = collect();
+
+        if ($currentFolder) {
+            $walker = $currentFolder;
+
+            while ($walker) {
+                $breadcrumbs->prepend($walker);
+                $walker = $walker->parent;
+            }
+        }
+
         $tags    = MediaTag::orderBy('name')->get();
 
         return view('mediamanager::livewire.manager', [
             'files'   => $files,
             'folders' => $folders,
+            'currentFolder' => $currentFolder,
+            'breadcrumbs' => $breadcrumbs,
             'tags'    => $tags,
         ]);
     }

@@ -2,6 +2,7 @@
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="dark">
 <head>
     @include('partials.head')
+    @mediaStyles
 </head>
 <body class="min-h-screen bg-white dark:bg-zinc-800">
 
@@ -177,10 +178,8 @@
 </div>
 
 @fluxScripts
+@mediaScripts
 @include('mediamanager::includes.media-modal')
-
-<link rel="stylesheet" href="https://unpkg.com/cropperjs@1.6.2/dist/cropper.min.css">
-<script src="https://unpkg.com/cropperjs@1.6.2/dist/cropper.min.js"></script>
 <script src="https://cdn.ckeditor.com/4.22.1/standard/ckeditor.js"></script>
 <script>
     // CKEditor 4 ইনিশিয়ালাইজ
